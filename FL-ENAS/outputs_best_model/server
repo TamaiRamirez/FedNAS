@@ -1,0 +1,75 @@
+Server started, waiting for 2 clients to connect...
+Client ('127.0.0.1', 59346) connected.
+Client ('127.0.0.1', 59356) connected.
+
+INITIAL TIME: 2024-07-01 11:14:43.191551
+
+MODE: best_model
+
+Starting round 1...
+
+Round 1 completed.
+Time: 0:24:01.893111
+
+
+Starting round 2...
+
+Round 2 completed.
+Time: 0:48:33.718288
+
+
+Starting round 3...
+
+Round 3 completed.
+Time: 1:13:11.395948
+
+
+Starting round 4...
+
+Round 4 completed.
+Time: 1:38:03.578859
+
+
+Starting round 5...
+
+Round 5 completed.
+Time: 2:03:22.067322
+
+
+Starting round 6...
+
+Round 6 completed.
+Time: 2:28:44.224122
+
+
+Starting round 7...
+
+Round 7 completed.
+Time: 2:54:29.115893
+
+
+Starting round 8...
+
+Round 8 completed.
+Time: 3:20:26.664325
+
+
+Starting round 9...
+
+Round 9 completed.
+Time: 3:46:40.653464
+
+
+Starting round 10...
+
+Round 10 completed.
+Time: 4:13:13.970780
+
+Accuracy Test final: 0.7
+FINISH TIME: 2024-07-01 15:27:57.162387
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+All connections closed.
