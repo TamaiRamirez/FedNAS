@@ -24,13 +24,13 @@ serverapp = "flwr_cifar10_basic.server_app:app"
 clientapp = "flwr_cifar10_basic.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
-local-epochs = 1
-batch-size = 32
-verbose = false
+num-server-rounds = 2
+local-epochs = 10
+batch-size = 128
+verbose = true
 
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 10
+options.num-supernodes = 2

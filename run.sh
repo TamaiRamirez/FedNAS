@@ -23,7 +23,7 @@ fi
 # Print the result (or use it however you want)
 echo "GPU Device set to: RTX $1"
 
-docker run --rm -it --gpus ${gpu_device} -e DISPLAY=${DISPLAY} \
+docker run --rm -it --gpus ${gpu_device} --ipc=host -e DISPLAY=${DISPLAY} \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw --network host \
     --workdir="/workspace" \
     --name $containerName --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=all -e "TERM=xterm-256color" \

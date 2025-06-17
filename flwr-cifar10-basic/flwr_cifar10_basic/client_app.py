@@ -12,7 +12,7 @@ class FlowerClient(NumPyClient):
         self, model, data, epochs, batch_size, verbose
     ):
         self.model = model
-        self.x_train, self.y_train, self.x_test, self.y_test = data
+        self.images, self.labels = data
         self.epochs = epochs
         self.batch_size = batch_size
         self.verbose = verbose
@@ -20,18 +20,19 @@ class FlowerClient(NumPyClient):
     def fit(self, parameters, config):
         self.model.set_weights(parameters)
         self.model.fit(
-            self.x_train,
-            self.y_train,
+            self.images["train"],
+            self.labels["train"],
             epochs=self.epochs,
+            validation_data=(self.images["valid"],self.labels["valid"]),
             batch_size=self.batch_size,
             verbose=self.verbose,
         )
-        return self.model.get_weights(), len(self.x_train), {}
+        return self.model.get_weights(), len(self.images["train"]), {}
 
     def evaluate(self, parameters, config):
         self.model.set_weights(parameters)
-        loss, accuracy = self.model.evaluate(self.x_test, self.y_test, verbose=0)
-        return loss, len(self.x_test), {"accuracy": accuracy}
+        loss, accuracy = self.model.evaluate(self.images["test"], self.labels["test"], verbose=0)
+        return loss, len(self.images["test"]), {"accuracy": accuracy}
 
 
 def client_fn(context: Context):

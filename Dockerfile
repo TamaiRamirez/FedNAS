@@ -44,7 +44,7 @@ RUN sudo apt install -y \
 
 # RUN sudo apt-get install -y nvidia-cuda-toolkit
 
-RUN pip install -U tensorflow
+RUN pip install -U tensorflow[and-cuda]
 RUN pip install -U absl-py
 RUN pip install -U tensorboard
 RUN pip install -U scikit-learn
