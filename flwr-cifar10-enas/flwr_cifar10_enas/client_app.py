@@ -3,12 +3,13 @@
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 
-from flwr_cifar10_enas.task import load_data, load_model, train
+from flwr_cifar10_enas.task import load_data, load_model, Trainer
+import copy
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
     def __init__(
-        self, data, parameters
+        self, data
     ):
         # self.model = model
         # self.x_train, self.y_train, self.x_test, self.y_test = data
@@ -16,11 +17,13 @@ class FlowerClient(NumPyClient):
         # self.batch_size = batch_size
         # self.verbose = verbose
         self.data = data
-        self.parameters = parameters
+        self.result = None
+        self.trainer = None
 
     def fit(self, parameters, config):
-        result = train(copy.deepcopy(self.data),self.parameters["architecture"],self.parameters["transfer"])
-        return result
+        self.trainer = Trainer(copy.deepcopy(self.data),{"child_weights": None, "controller_trainable_variables": None},False)
+        self.result = self.trainer.train()
+        return self.result
 
 def client_fn(context: Context):
     # Load model and data
@@ -32,10 +35,9 @@ def client_fn(context: Context):
     epochs = context.run_config["local-epochs"]
     batch_size = context.run_config["batch-size"]
     verbose = context.run_config.get("verbose")
-
     # Return Client instance
     return FlowerClient(
-        data, parameters
+        data
     ).to_client()
 
 
