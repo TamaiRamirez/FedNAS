@@ -27,7 +27,7 @@ clientapp = "flwr_cifar10_basic.client_app:app"
 num-server-rounds = 2
 local-epochs = 10
 batch-size = 128
-verbose = true
+verbose = false
 
 [tool.flwr.federations]
 default = "local-simulation"

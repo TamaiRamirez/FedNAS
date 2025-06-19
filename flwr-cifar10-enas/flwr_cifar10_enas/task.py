@@ -7,7 +7,29 @@ from keras import layers
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
 import numpy as np
+import shutil
+import sys
 
+import time
+from datetime import datetime
+from absl import flags, app
+import flwr_cifar10_enas.src.framework as fw
+from flwr_cifar10_enas.src import utils
+from flwr_cifar10_enas.src.utils import Logger
+from flwr_cifar10_enas.src.utils import DEFINE_boolean
+from flwr_cifar10_enas.src.utils import DEFINE_integer
+from flwr_cifar10_enas.src.utils import DEFINE_string
+from flwr_cifar10_enas.src.utils import print_user_flags
+
+from flwr_cifar10_enas.src.cifar10.data_utils import read_data
+from flwr_cifar10_enas.src.cifar10.macro_controller import MacroController
+from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild
+
+# from src.cifar10.micro_controller import MicroController
+# from src.cifar10.micro_child import MicroChild
+
+import copy
+from functools import lru_cache
 
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -67,3 +89,240 @@ def load_data(partition_id, num_partitions):
 
 
     return images, labels
+
+
+
+DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
+DEFINE_string("data_path", "data/cifar10", "")
+DEFINE_string("output_dir", "outputs", "")
+
+DEFINE_integer("controller_train_steps", 50, "")
+DEFINE_integer("controller_train_every", 1,
+               "train the controller after this number of epochs")
+DEFINE_boolean("controller_training", True, "")
+
+DEFINE_integer("log_every", 50, "How many steps to log")
+DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
+DEFINE_integer("num_epochs", 1, "How many epochs to train")
+DEFINE_boolean("child_use_aux_heads", True, "")
+
+from memory_profiler import profile
+    
+def get_ops(dataset, arch, transfer):
+    """
+    Args:
+        images: dict with keys {"train", "valid", "test"}.
+        labels: dict with keys {"train", "valid", "test"}.
+    """
+    FLAGS = flags.FLAGS
+    assert FLAGS.search_for is not None, "Please specify --search_for"
+
+    # Controller and Child class selection
+    ControllerClass = MacroController
+    ChildClass = MacroChild
+
+    # Initialize child model
+    child_model = ChildClass(
+        dataset["images"],
+        dataset["labels"],
+        clip_mode="norm",
+        optim_algo="momentum",
+        child_weights=arch["child_weights"],
+        transfer=transfer
+    )
+    
+    controller_ops = None
+    dataset_valid_shuffle = None
+    
+    # Initialize controller model if no fixed architecture is provided
+    if FLAGS.child_fixed_arc is None:
+        controller_model = ControllerClass(
+            lstm_size=64,
+            lstm_num_layers=1,
+            lstm_keep_prob=1.0,
+            lr_dec_start=0,
+            lr_dec_every=1000000,  # never decrease learning rate
+            optim_algo="adam",
+            controller_weights=arch["controller_trainable_variables"],
+            transfer=transfer
+        )
+        
+        # Connect controller with child model
+        child_train_op, child_lr, child_optimizer = child_model.connect_controller(controller_model)
+        dataset_valid_shuffle = child_model.ValidationRLShuffle(
+            child_model, False
+        )(child_model.images['valid_original'], child_model.labels['valid_original'])
+
+        # Build controller trainer
+        controller_train_op, controller_lr, controller_optimizer = controller_model.build_trainer(
+            child_model, child_model.ValidationRL()
+        )
+
+        # Collect controller operations
+        controller_ops = {
+            "train_step": controller_model.train_step,
+            "generate_sample_arc": controller_model.generate_sample_arc,
+            'loss': controller_model.loss,
+            "train_op": controller_train_op,
+            "lr": controller_lr,
+            'trainable_variables': controller_model.trainable_variables(),
+            "valid_acc": controller_model.valid_acc,
+            "optimizer": controller_optimizer,
+            "baseline": controller_model.baseline,
+            "entropy": lambda: controller_model.current_entropy,
+        }
+
+    else:
+        # Handle case where architecture is fixed
+        assert not FLAGS.controller_training, (
+            "--child_fixed_arc is given, cannot train controller"
+        )
+        child_train_op, child_lr, child_optimizer = child_model.connect_controller(None)
+
+    # Clean up to free memory
+
+    ops = {
+        "child": {
+            'generate_train_losses': child_model.generate_train_losses,
+            'test_model': child_model.test_model,
+            'validation_model': child_model.valid_model,
+            'validation_rl_model': child_model.valid_rl_model,
+            'global_step': child_model.global_step,
+            'dataset': child_model.dataset,
+            'dataset_test': child_model.dataset_test,
+            'dataset_valid_shuffle': dataset_valid_shuffle,
+            "loss": child_model.loss,
+            "train_loss": child_model.train_loss,
+            "train_op": child_train_op,
+            "lr": child_lr,
+            'trainable_variables': child_model.trainable_variables(),
+            "optimizer": child_optimizer,
+            "num_train_batches": child_model.num_train_batches,
+            "weights": child_model.weights.weight_map,
+        },
+        "controller": controller_ops,
+        "eval_every": child_model.num_train_batches * FLAGS.eval_every_epochs,
+        "eval_func": child_model.eval_once,
+        "num_train_batches": child_model.num_train_batches,
+    }
+    # Ensure previous sessions and variables are cleared to free memory
+    child_model, controller_ops, dataset_valid_shuffle, child_valid_rl_model, controller_model = [None] * 5
+
+    return ops
+
+
+@fw.function(autograph=False)
+def child_train_op(ops, images, labels):
+    with fw.GradientTape() as tape:
+        child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
+        child_grad_norm, child_grad_norm_list, _ = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
+    return child_train_logits, child_loss, child_train_acc, child_grad_norm
+
+@fw.function(autograph=False)
+def controller_train_op(ops, child_train_logits, labels):
+    with fw.GradientTape() as tape:
+        ops["controller"]["generate_sample_arc"]()
+        controller_loss = ops['controller']['loss'](child_train_logits, labels)
+        gn, gn_list, _ = ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
+        return controller_loss, gn
+
+
+def train(dataset, arch, transfer):
+    # tf.config.run_functions_eagerly(True)
+    # tf.data.experimental.enable_debug_mode()
+    FLAGS = flags.FLAGS
+    # images, labels = data["images"], data["labels"]
+    batch_iterator = None
+    ops=get_ops(dataset, arch, transfer)
+    print("-" * 80)
+    print("Starting session")
+    start_time = datetime.now()
+    
+    while True:
+        
+        if batch_iterator is None:
+            batch_iterator = ops['child']['dataset'].as_numpy_iterator()
+        try:
+            images, labels = next(batch_iterator)
+        except StopIteration:
+            batch_iterator = ops['child']['dataset'].as_numpy_iterator()
+            images, labels = next(batch_iterator)
+        
+        child_train_logits, child_loss, child_train_acc, child_grad_norm = child_train_op(ops, images, labels)
+        child_lr = ops['child']['lr']()
+        global_step = ops["child"]["global_step"].value()
+        
+        if FLAGS.child_sync_replicas:
+            actual_step = global_step * FLAGS.child_num_aggregate
+        else:
+            actual_step = global_step
+
+        epoch = actual_step // ops["num_train_batches"]
+        curr_time = datetime.now()
+
+        if global_step % FLAGS.log_every == 0:
+            log_string = f"epoch={epoch:<6d}\tch_step={global_step:<6d}\tloss={child_loss:.4f}\t"
+            log_string += f"lr={child_lr:.4f}\t|g|={child_grad_norm:.4f}\ttr_acc={(child_train_acc/FLAGS.batch_size):4f}\t"
+            log_string += f"Time: {curr_time - start_time}"
+            print(log_string)
+
+        if actual_step % ops["eval_every"] == 0:
+            test_images_batch, test_labels_batch = next(ops['child']['dataset_test'].as_numpy_iterator())
+            child_test_logits = ops['child']['test_model'](test_images_batch)
+
+            if FLAGS.controller_training and epoch % FLAGS.controller_train_every == 0:
+                print(f"Epoch {epoch}: Training controller")
+                images_batch, labels_batch = next(ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
+
+                for ct_step in range(FLAGS.controller_train_steps * FLAGS.controller_num_aggregate):
+                    controller_valid_acc = ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
+                    controller_loss, gn = controller_train_op(ops, child_train_logits, labels)
+                    controller_entropy = 0
+                    lr = ops["controller"]["lr"]()
+                    bl = ops["controller"]["baseline"]
+
+                    if ct_step % FLAGS.log_every == 0:
+                        curr_time = datetime.now()
+                        log_string = f"ctrl_step={ops['controller']['train_step'].value():<6d}\tloss={controller_loss:.4f}\t"
+                        log_string += f"ent={controller_entropy:.4f}\tlr={lr:.4f}\t|g|={gn:.4f}\tacc={controller_valid_acc:.4f}\t"
+                        log_string += f"bl={bl.value():4f}\tTime: {curr_time - start_time}"
+                        print(log_string)
+
+                # print("Here are 10 architectures")
+                # for _ in range(10):
+                #     arc = self.ops["controller"]["generate_sample_arc"]()
+                #     child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                #     acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
+                #     if FLAGS.search_for == "micro":
+                #         normal_arc, reduce_arc = arc
+                #         print(np.reshape(normal_arc, [-1]))
+                #         print(np.reshape(reduce_arc, [-1]))
+                #     else:
+                #         start = 0
+                #         for layer_id in range(FLAGS.child_num_layers):
+                #             if FLAGS.controller_search_whole_channels:
+                #                 end = start + 1 + layer_id
+                #             else:
+                #                 end = start + 2 * FLAGS.child_num_branches + layer_id
+                #             print(np.reshape(arc[start: end], [-1]))
+                #             start = end
+                #     print(f"val_acc={acc:<6.4f}")
+                #     print("-" * 80)
+                # print("-" * 80)
+
+            print(f"Epoch {epoch}: Eval")
+            if FLAGS.child_fixed_arc is None:
+                child_valid_acc = ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
+            child_test_acc = ops["eval_func"]("test", child_test_logits, test_labels_batch)
+
+        if epoch >= FLAGS.num_epochs:
+            break
+
+    return {
+            "child_valid_acc": child_valid_acc,
+            "child_test_acc": child_test_acc,
+            "child_weights": ops["child"]["weights"],
+            "controller_trainable_variables": ops["controller"]["trainable_variables"]
+            }
+

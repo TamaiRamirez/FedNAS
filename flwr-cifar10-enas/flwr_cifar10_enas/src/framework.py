@@ -70,7 +70,7 @@ class WeightRegistry(object):
 # TensorFlow 2
 GradientTape = tf.GradientTape
 Graph = tf.Graph
-Hook = tf.estimator.CheckpointSaverHook
+Hook = tf.keras.callbacks.ModelCheckpoint #tf.estimator.CheckpointSaverHook
 IndexedSlices = tf.IndexedSlices
 TensorArray = tf.TensorArray
 

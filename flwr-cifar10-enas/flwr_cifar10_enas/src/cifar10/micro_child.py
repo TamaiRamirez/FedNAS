@@ -7,15 +7,15 @@ import sys
 
 import numpy as np
 from absl import flags
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 
-from src.cifar10.child import Child
-from src.cifar10.image_ops import BatchNorm
-from src.cifar10.image_ops import drop_path
+from flwr_cifar10_enas.src.cifar10.child import Child
+from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm
+from flwr_cifar10_enas.src.cifar10.image_ops import drop_path
 
-from src.utils import count_model_params
-from src.utils import get_train_ops
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, LayeredModel
+from flwr_cifar10_enas.src.utils import count_model_params
+from flwr_cifar10_enas.src.utils import get_train_ops
+from flwr_cifar10_enas.src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, LayeredModel
 
 DEFINE_float("child_drop_path_keep_prob", 0.6, "minimum drop_path_keep_prob")
 DEFINE_integer("child_num_cells", 5, "")

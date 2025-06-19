@@ -1,6 +1,5 @@
 # Include a base image
 FROM ubuntu:22.04
-
 # Add vscode user with same UID and GID as your host system
 # (copied from https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user#_creating-a-nonroot-user)
 

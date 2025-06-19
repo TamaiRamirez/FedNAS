@@ -1,7 +1,7 @@
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 from absl import flags
 
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate
+from flwr_cifar10_enas.src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate
 
 DEFINE_float("controller_bl_dec", 0.99, "")
 DEFINE_float("controller_entropy_weight", 0.1, "")

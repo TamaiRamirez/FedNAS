@@ -1,5 +1,5 @@
 import numpy as np
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 
 def lstm(x, prev_c, prev_h, w):
   """

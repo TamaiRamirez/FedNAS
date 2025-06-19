@@ -8,13 +8,13 @@ import time
 
 import numpy as np
 from absl import flags
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 
-from src.controller import Controller
-from src.utils import get_train_ops, DEFINE_float, ClipMode, Optimizer, LayeredModel
-from src.common_ops import stack_lstm
-from src.cifar10.micro_child import MicroChild # for child_num_cells
-from src.cifar10.macro_child import MacroChild # for child_num_branches
+from flwr_cifar10_enas.src.controller import Controller
+from flwr_cifar10_enas.src.utils import get_train_ops, DEFINE_float, ClipMode, Optimizer, LayeredModel
+from flwr_cifar10_enas.src.common_ops import stack_lstm
+from flwr_cifar10_enas.src.cifar10.micro_child import MicroChild # for child_num_cells
+from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild # for child_num_branches
 
 from tensorflow.python.training import moving_averages
 

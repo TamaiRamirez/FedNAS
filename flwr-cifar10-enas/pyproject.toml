@@ -24,7 +24,7 @@ serverapp = "flwr_cifar10_enas.server_app:app"
 clientapp = "flwr_cifar10_enas.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 2
+num-server-rounds = 1
 local-epochs = 5
 batch-size = 32
 verbose = false
@@ -33,4 +33,4 @@ verbose = false
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 2
+options.num-supernodes = 1

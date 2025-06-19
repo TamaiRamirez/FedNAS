@@ -1,13 +1,13 @@
 import sys
 
 import numpy as np
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 from absl import flags
 import pickle
 
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
-from src.utils import LearningRate, ClipMode, Optimizer, LayeredModel
-from src.cifar10.image_ops import BatchNorm
+from flwr_cifar10_enas.src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
+from flwr_cifar10_enas.src.utils import LearningRate, ClipMode, Optimizer, LayeredModel
+from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm
 
 
 DEFINE_integer("batch_size", 128, "")

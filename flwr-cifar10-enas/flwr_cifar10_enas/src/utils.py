@@ -8,7 +8,7 @@ from absl import app
 from absl import flags
 from absl import logging
 
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 
 import psutil
 import gc

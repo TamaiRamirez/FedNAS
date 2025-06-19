@@ -4,13 +4,13 @@ import time
 
 import numpy as np
 from absl import flags
-import src.framework as fw
+import flwr_cifar10_enas.src.framework as fw
 
-from src.controller import Controller
-from src.utils import get_train_ops, Optimizer, ClipMode
-from src.common_ops import stack_lstm
+from flwr_cifar10_enas.src.controller import Controller
+from flwr_cifar10_enas.src.utils import get_train_ops, Optimizer, ClipMode
+from flwr_cifar10_enas.src.common_ops import stack_lstm
 
-from src.utils import DEFINE_boolean, DEFINE_float, ClipMode, LayeredModel
+from flwr_cifar10_enas.src.utils import DEFINE_boolean, DEFINE_float, ClipMode, LayeredModel
 
 DEFINE_boolean("controller_search_whole_channels", True, "")
 DEFINE_float("controller_skip_target", 0.4, "")
