@@ -192,14 +192,14 @@ zeros_like = tf.zeros_like
 class Optimizer(object):
     @staticmethod
     def Momentum(learning_rate):
-        return tf.keras.optimizers.experimental.SGD(
+        return tf.keras.optimizers.SGD(
             learning_rate,
             0.9,
             True)
 
     @staticmethod
     def SGD(learning_rate):
-        return tf.keras.optimizers.experimental.SGD(learning_rate)
+        return tf.keras.optimizers.SGD(learning_rate)
 
     @staticmethod
     def Adam(learning_rate):

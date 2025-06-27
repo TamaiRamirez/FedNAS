@@ -73,9 +73,12 @@ def load_data(partition_id, num_partitions):
     # Divide data on each node: 80% train, 20% test
     partition = partition.train_test_split(test_size=0.2)
     partition_train=partition["train"].train_test_split(test_size=0.2)
-    images["train"], labels["train"] = np.transpose(np.reshape(partition_train["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["train"]["label"]
-    images["valid"], labels["valid"] = np.transpose(np.reshape(partition_train["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["test"]["label"]
-    images["test"], labels["test"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition["test"]["label"]
+
+    # Images has to be float32 and labels int32
+
+    images["train"], labels["train"] = np.transpose(np.reshape(partition_train["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition_train["train"]["label"])
+    images["valid"], labels["valid"] = np.transpose(np.reshape(partition_train["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition_train["test"]["label"])
+    images["test"], labels["test"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["test"]["label"])
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
@@ -83,9 +86,9 @@ def load_data(partition_id, num_partitions):
     print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
     print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
-    images["train"] = (images["train"] - mean) / std
-    images["valid"] = (images["valid"] - mean) / std
-    images["test"] = (images["test"] - mean) / std
+    images["train"] = np.float32((images["train"] - mean) / std)
+    images["valid"] = np.float32((images["valid"] - mean) / std)
+    images["test"] = np.float32((images["test"] - mean) / std)
 
 
     return {"images": images, "labels": labels}

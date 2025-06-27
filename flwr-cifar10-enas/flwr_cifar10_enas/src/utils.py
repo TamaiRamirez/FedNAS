@@ -329,8 +329,7 @@ class TrainStep(object):
                 grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
                 
     return grad_norm, grad_norms, self.opt.apply_gradients(
-      zip(self.clip_mode.clip(grads), vars),
-      global_step=self.train_step)
+      zip(self.clip_mode.clip(grads), vars))
 
   def learning_rate(self):
     return self.updater.update(self.num_train_batches, self.train_step)
