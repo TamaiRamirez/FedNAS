@@ -3,8 +3,7 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-
-from flwr_cifar10_enas.task import load_model
+from flwr_cifar10_enas.my_strategy import FedCustom
 
 
 def server_fn(context: Context):
@@ -12,14 +11,13 @@ def server_fn(context: Context):
     num_rounds = context.run_config["num-server-rounds"]
 
     # Get parameters to initialize global model
-    parameters = ndarrays_to_parameters(load_model().get_weights())
+    # parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = strategy = FedAvg(
+    strategy = FedAvg(
         fraction_fit=1.0,
-        fraction_evaluate=1.0,
+        fraction_evaluate=0.0,
         min_available_clients=2,
-        initial_parameters=parameters,
     )
     config = ServerConfig(num_rounds=num_rounds)
 

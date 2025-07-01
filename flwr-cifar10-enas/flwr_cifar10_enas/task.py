@@ -35,22 +35,22 @@ from functools import lru_cache
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
-def load_model():
-    # Define a simple CNN for CIFAR-10 and set Adam optimizer
-    model = keras.Sequential(
-        [
-            keras.Input(shape=(32, 32, 3)),
-            layers.Conv2D(32, kernel_size=(3, 3), activation="relu"),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Conv2D(64, kernel_size=(3, 3), activation="relu"),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Flatten(),
-            layers.Dropout(0.5),
-            layers.Dense(10, activation="softmax"),
-        ]
-    )
-    model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
-    return model
+# def load_model():
+#     # Define a simple CNN for CIFAR-10 and set Adam optimizer
+#     model = keras.Sequential(
+#         [
+#             keras.Input(shape=(32, 32, 3)),
+#             layers.Conv2D(32, kernel_size=(3, 3), activation="relu"),
+#             layers.MaxPooling2D(pool_size=(2, 2)),
+#             layers.Conv2D(64, kernel_size=(3, 3), activation="relu"),
+#             layers.MaxPooling2D(pool_size=(2, 2)),
+#             layers.Flatten(),
+#             layers.Dropout(0.5),
+#             layers.Dense(10, activation="softmax"),
+#         ]
+#     )
+#     model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+#     return model
 
 
 fds = None  # Cache FederatedDataset
@@ -93,6 +93,37 @@ def load_data(partition_id, num_partitions):
 
     return {"images": images, "labels": labels}
 
+def weights_to_ndarrays(data_dict, keys):
+    """
+    Takes a dictionary with keys and array-like values,
+    returns a tuple of:
+    - A NumPy ndarray stacking all array values
+    - A list of keys in the same order as the arrays
+    """
+    arrays = [data_dict[key] for key in keys]
+    
+    # try:
+    #     stacked_array = np.stack(arrays)
+    # except ValueError:
+    #     # Fall back to np.array if shapes don't match
+    #     stacked_array = np.array(arrays, dtype=object)
+
+    return arrays
+
+import numpy as np
+
+def ndarray_to_weights(array_data, keys):
+    """
+    Takes a NumPy array (or list of arrays) and a list of keys,
+    returns a dictionary mapping keys to their corresponding arrays.
+    """
+    if len(array_data) != len(keys):
+        raise ValueError("Length of array_data and keys must be the same.")
+    
+    # Ensure array_data is a list of arrays
+    array_data = np.asarray(array_data, dtype=object)
+    
+    return {key: np.asarray(array_data[i]) for i, key in enumerate(keys)}
 
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
@@ -217,6 +248,15 @@ class Trainer:
         }
         # Ensure previous sessions and variables are cleared to free memory
         child_model, controller_ops, dataset_valid_shuffle, child_valid_rl_model, controller_model = [None] * 5
+
+    # def get_weights_as_list(self) -> list:
+    #     # Convertir dict de pesos del modelo (child) a lista
+    #     child_weights = [w.numpy() for w in self.ops["child"]["weights"].values()]
+
+    #     # Convertir lista de tf.Variables del controlador a lista
+    #     controller_weights = [w.numpy() for w in self.ops["controller"]["trainable_variables"]]
+
+    #     return child_weights + controller_weights
 
     @fw.function(autograph=False)
     def child_train_op(self, images, labels):
