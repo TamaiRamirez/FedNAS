@@ -70,8 +70,8 @@ def load_data(partition_id, num_partitions):
     partition = fds.load_partition(partition_id, "train")
     partition.set_format("numpy")
 
-    # Divide data on each node: 80% train, 20% test
-    partition = partition.train_test_split(test_size=0.2)
+    # Divide data on each node: 40000 images train, 10000 valid, 10000 test
+    partition = partition.train_test_split(test_size=0.17)
     partition_train=partition["train"].train_test_split(test_size=0.2)
 
     # Images has to be float32 and labels int32
@@ -137,7 +137,7 @@ DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
-DEFINE_integer("num_epochs", 1, "How many epochs to train")
+DEFINE_integer("num_epochs", 310, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
@@ -167,7 +167,7 @@ class Trainer:
             self.dataset["images"],
             self.dataset["labels"],
             clip_mode="norm",
-            optim_algo="momentum",
+            optim_algo="adam",
             child_weights=self.arch["child_weights"],
             transfer=self.transfer
         )
@@ -310,7 +310,7 @@ class Trainer:
             if global_step % FLAGS.log_every == 0:
                 log_string = f"epoch={epoch:<6d}\tch_step={global_step:<6d}\tloss={child_loss:.4f}\t"
                 log_string += f"lr={child_lr:.4f}\t|g|={child_grad_norm:.4f}\ttr_acc={(child_train_acc/FLAGS.batch_size):4f}\t"
-                log_string += f"Time: {curr_time - start_time}"
+                # log_string += f"Time: {curr_time - start_time}"
                 print(log_string)
 
             if actual_step % self.ops["eval_every"] == 0:
@@ -333,7 +333,8 @@ class Trainer:
                             curr_time = datetime.now()
                             log_string = f"ctrl_step={self.ops['controller']['train_step'].value():<6d}\tloss={controller_loss:.4f}\t"
                             log_string += f"ent={controller_entropy:.4f}\tlr={lr:.4f}\t|g|={gn:.4f}\tacc={controller_valid_acc:.4f}\t"
-                            log_string += f"bl={bl.value():4f}\tTime: {curr_time - start_time}"
+                            log_string += f"bl={bl.value():4f}\t"
+                            # log_string + = f"Time: {curr_time - start_time}"
                             print(log_string)
 
                     # print("Here are 10 architectures")
@@ -367,8 +368,9 @@ class Trainer:
                 break
 
         return {
-                "child_valid_acc": child_valid_acc,
-                "child_test_acc": child_test_acc,
+                "child_train_acc": float(child_train_acc/FLAGS.batch_size),
+                "child_valid_acc": float(child_valid_acc),
+                "child_test_acc": float(child_test_acc),
                 "child_weights": self.ops["child"]["weights"],
                 "controller_trainable_variables": self.ops["controller"]["trainable_variables"]
                 }

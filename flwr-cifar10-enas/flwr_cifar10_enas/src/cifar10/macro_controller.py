@@ -21,23 +21,23 @@ import gc
 import os
 gc.enable()
 # inner psutil function
-def process_memory():
-    process = psutil.Process(os.getpid())
-    mem_info = process.memory_info()
-    return mem_info.rss
+# def process_memory():
+#     process = psutil.Process(os.getpid())
+#     mem_info = process.memory_info()
+#     return mem_info.rss
 
-# decorator function
-def profile(func):
-    def wrapper(*args, **kwargs):
+# # decorator function
+# def profile(func):
+#     def wrapper(*args, **kwargs):
 
-        mem_before = process_memory() / (1024*1024*1024)
-        result = func(*args, **kwargs)
-        mem_after = process_memory() / (1024*1024*1024)
-        print("*"*80)
-        print(f"\nFunction: {func.__name__}\nConsumed memory:\nBefore: {mem_before:.2f} After: {mem_after:.2f} Difference: {(mem_after - mem_before):.2f} GB\n")
-        print("*"*80)
-        return result
-    return wrapper
+#         mem_before = process_memory() / (1024*1024*1024)
+#         result = func(*args, **kwargs)
+#         mem_after = process_memory() / (1024*1024*1024)
+#         print("*"*80)
+#         print(f"\nFunction: {func.__name__}\nConsumed memory:\nBefore: {mem_before:.2f} After: {mem_after:.2f} Difference: {(mem_after - mem_before):.2f} GB\n")
+#         print("*"*80)
+#         return result
+#     return wrapper
 
 class MacroController(Controller):
 

@@ -18,6 +18,7 @@ class FlowerClient(NumPyClient):
         # self.verbose = verbose
         self.data = data
         self.keys = None
+        self.controller_weights = None
         # Initialize context to know if it is the first time the model is used or not
         self.client_state = context.state
         if "client_info" not in self.client_state.config_records:
@@ -33,12 +34,15 @@ class FlowerClient(NumPyClient):
         else:
             child_weights=ndarray_to_weights(parameters,self.keys)
             transfer=True
-        trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": None},transfer)
+        trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": self.controller_weights},transfer)
         result = trainer.train()
 
         self.keys = list(result["child_weights"].keys())
         model_weights = weights_to_ndarrays(result["child_weights"], self.keys)
-        return model_weights, len(model_weights), {}
+        self.controller_weights = result["controller_trainable_variables"]
+        return model_weights, len(model_weights), {"train_acc": result["child_train_acc"],
+                "valid_acc": result["child_valid_acc"],
+                "test_acc": result["child_test_acc"]}
 
 def client_fn(context: Context):
 

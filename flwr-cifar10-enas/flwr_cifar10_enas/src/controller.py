@@ -4,10 +4,10 @@ from absl import flags
 from flwr_cifar10_enas.src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate
 
 DEFINE_float("controller_bl_dec", 0.99, "")
-DEFINE_float("controller_entropy_weight", 0.1, "")
+DEFINE_float("controller_entropy_weight", 0.0001, "")
 DEFINE_float("controller_l2_reg", 0.0, "")
 DEFINE_float("controller_lr", 0.00035, "")
-DEFINE_float("controller_tanh_constant", 2.5, "")
+DEFINE_float("controller_tanh_constant", 1.5, "")
 DEFINE_float("controller_temperature", 5.0, "")
 DEFINE_float("controller_op_tanh_reduce", 2.5, "")
 DEFINE_boolean("controller_use_critic", False, "")

@@ -19,7 +19,6 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         self.model.set_weights(parameters)
-        print(f"\nPARAMETERS:\n{parameters}\n\n")
         self.model.fit(
             self.images["train"],
             self.labels["train"],
@@ -28,7 +27,6 @@ class FlowerClient(NumPyClient):
             batch_size=self.batch_size,
             verbose=self.verbose,
         )
-        print(f"\nWEIGHTS:\n{self.model.get_weights()}\n\n")
         return self.model.get_weights(), len(self.images["train"]), {}
 
     def evaluate(self, parameters, config):

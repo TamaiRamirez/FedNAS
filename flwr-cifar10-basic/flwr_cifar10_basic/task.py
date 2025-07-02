@@ -51,8 +51,8 @@ def load_data(partition_id, num_partitions):
     partition = fds.load_partition(partition_id, "train")
     partition.set_format("numpy")
 
-    # Divide data on each node: 80% train, 20% test
-    partition = partition.train_test_split(test_size=0.2)
+    # Divide data on each node: 40000 images train, 10000 valid, 10000 test
+    partition = partition.train_test_split(test_size=0.17)
     partition_train=partition["train"].train_test_split(test_size=0.2)
     images["train"], labels["train"] = np.transpose(np.reshape(partition_train["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["train"]["label"]
     images["valid"], labels["valid"] = np.transpose(np.reshape(partition_train["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["test"]["label"]
