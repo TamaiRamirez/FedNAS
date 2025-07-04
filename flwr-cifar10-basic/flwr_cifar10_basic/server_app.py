@@ -6,7 +6,6 @@ from flwr.server.strategy import FedAvg
 
 from flwr_cifar10_basic.task import load_model
 
-
 def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]

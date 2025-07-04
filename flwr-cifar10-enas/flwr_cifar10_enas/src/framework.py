@@ -190,24 +190,53 @@ zeros_init = tf.zeros_initializer
 zeros_like = tf.zeros_like
 
 class Optimizer(object):
-    @staticmethod
-    def Momentum(learning_rate):
-        return tf.keras.optimizers.SGD(
-            learning_rate,
-            0.9,
-            True)
+    # @staticmethod
+    # def Momentum(learning_rate):
+    #     return tf.keras.optimizers.SGD(
+    #         learning_rate,
+    #         0.9,
+    #         True)
 
-    @staticmethod
-    def SGD(learning_rate):
-        return tf.keras.optimizers.SGD(learning_rate)
+    # @staticmethod
+    # def SGD(learning_rate):
+    #     return tf.keras.optimizers.SGD(learning_rate)
 
-    @staticmethod
-    def Adam(learning_rate):
-        return tf.keras.optimizers.Adam(
-            learning_rate,
-            beta_1=0.0,
-            epsilon=1e-3)
+    # @staticmethod
+    # def Adam(learning_rate):
+    #     return tf.keras.optimizers.Adam(
+    #         learning_rate,
+    #         beta_1=0.0,
+    #         epsilon=1e-3)
 
-    @staticmethod
-    def SyncReplicas(opt, num_aggregate, num_replicas):
-        return opt
+    # @staticmethod
+    # def SyncReplicas(opt, num_aggregate, num_replicas):
+    #     return opt
+
+  # NOTA: MEJORANDO LOS OPTIMIZADORES:
+  @staticmethod
+  def Momentum(learning_rate, momentum=0.9, nesterov=True):
+      return tf.keras.optimizers.SGD(
+          learning_rate=learning_rate,
+          momentum=momentum,
+          nesterov=nesterov)
+
+  @staticmethod
+  def SGD(learning_rate, momentum=0.0, nesterov=False):
+      return tf.keras.optimizers.SGD(
+          learning_rate=learning_rate,
+          momentum=momentum,
+          nesterov=nesterov)
+
+  @staticmethod
+  def Adam(learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-7, amsgrad=False):
+      return tf.keras.optimizers.Adam(
+          learning_rate=learning_rate,
+          beta_1=beta_1,
+          beta_2=beta_2,
+          epsilon=epsilon,
+          amsgrad=amsgrad)
+
+  @staticmethod
+  def SyncReplicas(opt, num_aggregate, num_replicas):
+      return opt
+

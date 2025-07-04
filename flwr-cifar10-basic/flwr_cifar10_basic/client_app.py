@@ -31,7 +31,7 @@ class FlowerClient(NumPyClient):
 
     def evaluate(self, parameters, config):
         self.model.set_weights(parameters)
-        loss, accuracy = self.model.evaluate(self.images["test"], self.labels["test"], verbose=0)
+        loss, accuracy = self.model.evaluate(self.images["test"], self.labels["test"], verbose=1)
         return loss, len(self.images["test"]), {"accuracy": accuracy}
 
 

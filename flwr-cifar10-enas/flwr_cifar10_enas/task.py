@@ -34,27 +34,7 @@ from functools import lru_cache
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-
-# def load_model():
-#     # Define a simple CNN for CIFAR-10 and set Adam optimizer
-#     model = keras.Sequential(
-#         [
-#             keras.Input(shape=(32, 32, 3)),
-#             layers.Conv2D(32, kernel_size=(3, 3), activation="relu"),
-#             layers.MaxPooling2D(pool_size=(2, 2)),
-#             layers.Conv2D(64, kernel_size=(3, 3), activation="relu"),
-#             layers.MaxPooling2D(pool_size=(2, 2)),
-#             layers.Flatten(),
-#             layers.Dropout(0.5),
-#             layers.Dense(10, activation="softmax"),
-#         ]
-#     )
-#     model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
-#     return model
-
-
 fds = None  # Cache FederatedDataset
-
 
 def load_data(partition_id, num_partitions):
     # Download and partition dataset
@@ -67,30 +47,46 @@ def load_data(partition_id, num_partitions):
             dataset="uoft-cs/cifar10",
             partitioners={"train": partitioner},
         )
-    partition = fds.load_partition(partition_id, "train")
-    partition.set_format("numpy")
 
-    # Divide data on each node: 40000 images train, 10000 valid, 10000 test
-    partition = partition.train_test_split(test_size=0.17)
-    partition_train=partition["train"].train_test_split(test_size=0.2)
+    train_set = fds.load_partition(partition_id, "train")
+    train_set.set_format("numpy")
+
+    # Shuffle train set
+    train_set = train_set.shuffle(seed=42)
+
+    test_set = fds.load_split(split="test")
+    test_set.set_format("numpy")
+    # test_set = test_set.shuffle(seed=42)
+    # half_size = len(test_set) // num_partitions
+    # test_set = test_set.select(range(half_size))
+
+    print("-" * 80)
+    print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+    print("Number of images Original Dataset TEST:", test_set.shape[0])
+    
+    # Divide Train Set into Train and Validation
+    partition = train_set.train_test_split(test_size=0.2)
 
     # Images has to be float32 and labels int32
-
-    images["train"], labels["train"] = np.transpose(np.reshape(partition_train["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition_train["train"]["label"])
-    images["valid"], labels["valid"] = np.transpose(np.reshape(partition_train["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition_train["test"]["label"])
-    images["test"], labels["test"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["test"]["label"])
+    images["train"], labels["train"] = np.transpose(np.reshape(partition["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["train"]["label"])
+    images["valid"], labels["valid"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["test"]["label"])
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
-    print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    print("std: {}".format(np.reshape(std * 255.0, [-1])))
-
+    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+    
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)
-    images["test"] = np.float32((images["test"] - mean) / std)
+    
+    images["test"] = np.float32((test_set["img"] - mean) / std)
+    labels["test"] = np.int32(test_set["label"])
 
-
+    print("Number of images in dataset (Train):", images["train"].shape[0])
+    print("Number of images in dataset (Valid):", images["valid"].shape[0])
+    print("Number of images in dataset (Test):", images["test"].shape[0])
+    print("-" * 80)
     return {"images": images, "labels": labels}
 
 def weights_to_ndarrays(data_dict, keys):
@@ -136,7 +132,7 @@ DEFINE_integer("controller_train_every", 1,
 DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
-DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
+DEFINE_integer("eval_every_epochs", 10, "How many epochs to eval")
 DEFINE_integer("num_epochs", 310, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
@@ -249,15 +245,6 @@ class Trainer:
         # Ensure previous sessions and variables are cleared to free memory
         child_model, controller_ops, dataset_valid_shuffle, child_valid_rl_model, controller_model = [None] * 5
 
-    # def get_weights_as_list(self) -> list:
-    #     # Convertir dict de pesos del modelo (child) a lista
-    #     child_weights = [w.numpy() for w in self.ops["child"]["weights"].values()]
-
-    #     # Convertir lista de tf.Variables del controlador a lista
-    #     controller_weights = [w.numpy() for w in self.ops["controller"]["trainable_variables"]]
-
-    #     return child_weights + controller_weights
-
     @fw.function(autograph=False)
     def child_train_op(self, images, labels):
         with fw.GradientTape() as tape:
@@ -286,7 +273,6 @@ class Trainer:
         start_time = datetime.now()
         
         while True:
-            
             if batch_iterator is None:
                 batch_iterator = self.ops['child']['dataset'].as_numpy_iterator()
             try:
@@ -336,31 +322,33 @@ class Trainer:
                             log_string += f"bl={bl.value():4f}\t"
                             # log_string + = f"Time: {curr_time - start_time}"
                             print(log_string)
-
-                    # print("Here are 10 architectures")
-                    # for _ in range(10):
-                    #     arc = self.ops["controller"]["generate_sample_arc"]()
-                    #     child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
-                    #     acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
-                    #     if FLAGS.search_for == "micro":
-                    #         normal_arc, reduce_arc = arc
-                    #         print(np.reshape(normal_arc, [-1]))
-                    #         print(np.reshape(reduce_arc, [-1]))
-                    #     else:
-                    #         start = 0
-                    #         for layer_id in range(FLAGS.child_num_layers):
-                    #             if FLAGS.controller_search_whole_channels:
-                    #                 end = start + 1 + layer_id
-                    #             else:
-                    #                 end = start + 2 * FLAGS.child_num_branches + layer_id
-                    #             print(np.reshape(arc[start: end], [-1]))
-                    #             start = end
-                    #     print(f"val_acc={acc:<6.4f}")
-                    #     print("-" * 80)
-                    # print("-" * 80)
+                    
+                    print("-" * 80)
+                    print("Here are 2 architectures")
+                    for _ in range(2):
+                        arc = self.ops["controller"]["generate_sample_arc"]()
+                        child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                        acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
+                        if FLAGS.search_for == "micro":
+                            normal_arc, reduce_arc = arc
+                            print(np.reshape(normal_arc, [-1]))
+                            print(np.reshape(reduce_arc, [-1]))
+                        else:
+                            start = 0
+                            for layer_id in range(FLAGS.child_num_layers):
+                                if FLAGS.controller_search_whole_channels:
+                                    end = start + 1 + layer_id
+                                else:
+                                    end = start + 2 * FLAGS.child_num_branches + layer_id
+                                print(np.reshape(arc[start: end], [-1]))
+                                start = end
+                        print(f"val_acc={acc:<6.4f}")
+                        print("-" * 80)
+                    print("-" * 80)
 
                 print(f"Epoch {epoch}: Eval")
                 if FLAGS.child_fixed_arc is None:
+                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                     child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
                 child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch)
 

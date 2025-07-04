@@ -12,17 +12,17 @@ from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm
 
 DEFINE_integer("batch_size", 128, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
-DEFINE_integer("child_num_layers", 12, "")
+DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")
-DEFINE_float("child_l2_reg", 1e-4, "")
-DEFINE_float("child_lr", 0.1, "")
+DEFINE_float("child_l2_reg", 0.00025, "")
+DEFINE_float("child_lr", 0.001, "")
 DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_boolean("child_lr_cosine", True, "Use cosine lr schedule")
-DEFINE_float("child_lr_dec_rate", 0.1, "")
+DEFINE_float("child_lr_dec_rate", 0.01, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
-DEFINE_float("child_lr_min", 0.001, "for lr schedule")
+DEFINE_float("child_lr_min", 0.0005, "for lr schedule")
 DEFINE_integer("child_lr_T_0", 10, "for lr schedule")
 DEFINE_integer("child_lr_T_mul", 2, "for lr schedule")
 DEFINE_integer("child_num_aggregate", None, "")
@@ -154,7 +154,7 @@ class Child(object):
   def __init__(self,
                images,
                labels,
-               eval_batch_size=100,
+               eval_batch_size=128,
                clip_mode=None,
                lr_dec_start=0,
                optim_algo=None,
@@ -207,6 +207,7 @@ class Child(object):
         FLAGS.child_lr_T_0,
         FLAGS.child_lr_T_mul)
 
+      # NOTA: DATA AUGMENTATION
       def _pre_process(x, _y):
         x = fw.random_flip_left_right(fw.random_crop(fw.pad(x, [[4, 4], [4, 4], [0, 0]]), [32, 32, 3], seed=self.seed), seed=self.seed)
         if self.cutout_size is not None:
@@ -362,6 +363,44 @@ class Child(object):
           data_format=data_format.name)
       bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [fw.relu, layer2, bn]
+  
+  # NOTA: AÑADIDO MAXPOOLING Y AVG POOLING
+  class MaxPool3x3(LayeredModel):
+    def __init__(self, scope: str, data_format):
+        def layer(x):
+            # Convert to channels_last if needed
+            if data_format.name == "NCHW":
+                x = tf.transpose(x, [0, 2, 3, 1])
+            x = max_pool2d(
+                pool_size=3,
+                strides=1,
+                padding="same"
+            )(x)
+            # Convert back if needed
+            if data_format.name == "NCHW":
+                x = tf.transpose(x, [0, 3, 1, 2])
+            return x
+
+        self.layers = [layer]
+
+
+  class AvgPool3x3(LayeredModel):
+      def __init__(self, scope: str, data_format):
+          def layer(x):
+              # Convert to channels_last if needed
+              if data_format.name == "NCHW":
+                  x = tf.transpose(x, [0, 2, 3, 1])
+              x = avg_pool2d(
+                  pool_size=3,
+                  strides=1,
+                  padding="same"
+              )(x)
+              # Convert back if needed
+              if data_format.name == "NCHW":
+                  x = tf.transpose(x, [0, 3, 1, 2])
+              return x
+
+          self.layers = [layer]
 
 
   class StemConv(LayeredModel):

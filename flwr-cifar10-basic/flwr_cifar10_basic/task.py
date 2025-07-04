@@ -13,9 +13,22 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Input
 from tensorflow.keras.optimizers import Adam
 
+from sklearn.model_selection import train_test_split
+
+import tensorflow as tf
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+  try:
+    # tf.config.set_visible_devices(gpus[0], 'GPU')
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*7)])
+  except RuntimeError as e:
+    print(e)
+
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 def load_model():
     # Define a simple CNN for CIFAR-10 and set Adam optimizer
@@ -34,6 +47,28 @@ def load_model():
     return model
 
 
+def augment_image(img, crop_size=32, pad_size=4, flip_prob=0.5):
+    """
+    img: input image as a NumPy array of shape (H, W, C) with H=W=32
+    Returns: augmented image of shape (32, 32, C)
+    """
+
+    # 1. Center pad to 40x40
+    padded_img = np.pad(img, ((pad_size, pad_size), (pad_size, pad_size), (0, 0)), mode='constant')
+
+    # 2. Random crop
+    h, w = padded_img.shape[:2]
+    top = np.random.randint(0, h - crop_size + 1)
+    left = np.random.randint(0, w - crop_size + 1)
+    cropped_img = padded_img[top:top + crop_size, left:left + crop_size, :]
+
+    # 3. Random horizontal flip
+    if np.random.rand() < flip_prob:
+        cropped_img = np.fliplr(cropped_img)
+
+    return cropped_img
+
+
 fds = None  # Cache FederatedDataset
 
 
@@ -48,25 +83,48 @@ def load_data(partition_id, num_partitions):
             dataset="uoft-cs/cifar10",
             partitioners={"train": partitioner},
         )
-    partition = fds.load_partition(partition_id, "train")
-    partition.set_format("numpy")
 
-    # Divide data on each node: 40000 images train, 10000 valid, 10000 test
-    partition = partition.train_test_split(test_size=0.17)
-    partition_train=partition["train"].train_test_split(test_size=0.2)
-    images["train"], labels["train"] = np.transpose(np.reshape(partition_train["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["train"]["label"]
-    images["valid"], labels["valid"] = np.transpose(np.reshape(partition_train["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition_train["test"]["label"]
-    images["test"], labels["test"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), partition["test"]["label"]
+    train_set = fds.load_partition(partition_id, "train")
+    train_set.set_format("numpy")
+
+    test_set = fds.load_split(split="test")
+    test_set.set_format("numpy")
+
+    # print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+    # print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+    # Original dataset: X_train (N, 32, 32, 3)
+    # Let's generate 3 augmented datasets:
+    aug1 = np.array([augment_image(img) for img in train_set["img"]])
+    aug2 = np.array([augment_image(img) for img in train_set["img"]])
+    aug3 = np.array([augment_image(img) for img in train_set["img"]])
+
+    # Combine all:
+    X_train = np.concatenate((train_set["img"], aug1, aug2, aug3), axis=0)
+
+    # Similarly for labels (assuming y_train shape (N,))
+    y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"], train_set["label"]), axis=0)
+    
+    # Divide data on each node: 36000 images train, 12000 valid, 12000 test
+    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+    # Images has to be float32 and labels int32
+    images["train"], labels["train"] = np.transpose(np.reshape(X_train / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), y_train
+    images["valid"], labels["valid"] = np.transpose(np.reshape(X_valid / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), y_valid
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
-    print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    print("std: {}".format(np.reshape(std * 255.0, [-1])))
+    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
     images["train"] = (images["train"] - mean) / std
     images["valid"] = (images["valid"] - mean) / std
-    images["test"] = (images["test"] - mean) / std
+    
+    images["test"] = (test_set["img"] - mean) / std
+    labels["test"] = test_set["label"]
 
-
+    # print("Number of images in quadrupled dataset (Train):", X_train.shape[0])
+    # print("Number of images in quadrupled dataset (Valid):", X_valid.shape[0])
+    # print("Number of images in quadrupled dataset (Test):", images["test"].shape[0])
     return images, labels

@@ -58,6 +58,7 @@ class MacroChild(Child):
       clip_mode=clip_mode,
       lr_dec_start=lr_dec_start,
       optim_algo=optim_algo,
+      seed=seed,
       name=name)
     FLAGS = flags.FLAGS
     self.whole_channels = FLAGS.controller_search_whole_channels
@@ -533,16 +534,37 @@ class MacroChild(Child):
       self.layers = []
       inp_c = num_input_chan
       count = child.current_controller_arc()[start_idx]
-      if count in [0, 1, 2, 3]:
-        filter_size = [3, 3, 5, 5][count]
+      # if count in [0, 1, 2, 3]:
+      #   filter_size = [3, 3, 5, 5][count]
+      #   with fw.name_scope("conv_1x1") as scope:
+      #     self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
+      #   with fw.name_scope(f"conv_{filter_size}x{filter_size}") as scope:
+      #     self.layers.append(Child.ConvNxN(weights, reuse ,scope, filter_size, out_filters, child.data_format, is_training))
+      # elif count == 4:
+      #   pass # TODO Fill this in
+      # elif count == 5:
+      #   pass # TODO Fill this in
+
+      # NOTA: PRUEBA A VER SI METE CAPAS NUEVAS DE POOLING y LAS SEPARABLE CONV
+
+      if count in [0, 1]:
+        filter_size = [3, 5][count]
         with fw.name_scope("conv_1x1") as scope:
           self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
         with fw.name_scope(f"conv_{filter_size}x{filter_size}") as scope:
-          self.layers.append(Child.ConvNxN(weights, reuse ,scope, filter_size, out_filters, child.data_format, is_training))
+          self.layers.append(Child.ConvNxN(weights, reuse,scope, filter_size, out_filters, child.data_format, is_training))
+      elif count in [2,3]:
+        filter_size = [3, 5][count-2]
+        with fw.name_scope("conv_1x1") as scope:
+          self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
+        with fw.name_scope(f"sep_{filter_size}x{filter_size}") as scope:
+          self.layers.append(Child.SeparableConv(weights, reuse, scope, filter_size, out_filters, ch_mul=1, count=out_filters, data_format=child.data_format, is_training=is_training))
       elif count == 4:
-        pass # TODO Fill this in
+        with fw.name_scope("max_pool_3x3") as scope:
+          self.layers.append(Child.MaxPool3x3(scope, child.data_format))
       elif count == 5:
-        pass # TODO Fill this in
+        with fw.name_scope("avg_pool_3x3") as scope:
+          self.layers.append(Child.AvgPool3x3(scope, child.data_format))
       else:
         raise ValueError(f"Unknown operation number '{count}'")
       if layer_id > 0:

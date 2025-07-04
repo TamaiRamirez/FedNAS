@@ -27,7 +27,7 @@ clientapp = "flwr_cifar10_basic.client_app:app"
 num-server-rounds = 5
 local-epochs = 310
 batch-size = 128
-verbose = false
+verbose = true
 
 [tool.flwr.federations]
 default = "local-simulation"
@@ -36,5 +36,5 @@ default = "local-simulation"
 options.num-supernodes = 2
 
 [tool.flwr.federations.local-deployment]
-address = "0.0.0.0:9096"
+address = "127.0.0.1:9093"
 insecure = true
