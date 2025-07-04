@@ -127,12 +127,12 @@ DEFINE_string("data_path", "data/cifar10", "")
 DEFINE_string("output_dir", "outputs", "")
 
 DEFINE_integer("controller_train_steps", 50, "")
-DEFINE_integer("controller_train_every", 1,
-               "train the controller after this number of epochs")
+DEFINE_integer("controller_train_every", 10,
+               "train the controller after this number of epochs") #This values has to be multiple of eval_every_epochs
 DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
-DEFINE_integer("eval_every_epochs", 10, "How many epochs to eval")
+DEFINE_integer("eval_every_epochs", 2, "How many epochs to eval")
 DEFINE_integer("num_epochs", 310, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
@@ -300,14 +300,46 @@ class Trainer:
                 print(log_string)
 
             if actual_step % self.ops["eval_every"] == 0:
+                images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                
                 test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
                 child_test_logits = self.ops['child']['test_model'](test_images_batch)
+                
+                print("-" * 80)
+                num_archs = 2
+                print(f"Here are {num_archs} architectures")
+                for _ in range(num_archs):
+                    arc = self.ops["controller"]["generate_sample_arc"]()
+                    # print(arc)
+                    images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                    acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
+                    if FLAGS.search_for == "micro":
+                        normal_arc, reduce_arc = arc
+                        print(np.reshape(normal_arc, [-1]))
+                        print(np.reshape(reduce_arc, [-1]))
+                    else:
+                        start = 0
+                        for layer_id in range(FLAGS.child_num_layers):
+                            if FLAGS.controller_search_whole_channels:
+                                end = start + 1 + layer_id
+                            else:
+                                end = start + 2 * FLAGS.child_num_branches + layer_id
+                            print(np.reshape(arc[start: end], [-1]))
+                            start = end
+                    print(f"val_acc={acc:<6.4f}")
+                    print("-" * 80)
+                
+                print(f"Epoch {epoch}: Eval")
+                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
+                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch)
+                print("-" * 80)
 
                 if FLAGS.controller_training and epoch % FLAGS.controller_train_every == 0:
                     print(f"Epoch {epoch}: Training controller")
                     images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
                     child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
-
                     for ct_step in range(FLAGS.controller_train_steps * FLAGS.controller_num_aggregate):
                         controller_valid_acc = self.ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
                         controller_loss, gn = self.controller_train_op(child_train_logits, labels)
@@ -322,35 +354,7 @@ class Trainer:
                             log_string += f"bl={bl.value():4f}\t"
                             # log_string + = f"Time: {curr_time - start_time}"
                             print(log_string)
-                    
                     print("-" * 80)
-                    print("Here are 2 architectures")
-                    for _ in range(2):
-                        arc = self.ops["controller"]["generate_sample_arc"]()
-                        child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
-                        acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
-                        if FLAGS.search_for == "micro":
-                            normal_arc, reduce_arc = arc
-                            print(np.reshape(normal_arc, [-1]))
-                            print(np.reshape(reduce_arc, [-1]))
-                        else:
-                            start = 0
-                            for layer_id in range(FLAGS.child_num_layers):
-                                if FLAGS.controller_search_whole_channels:
-                                    end = start + 1 + layer_id
-                                else:
-                                    end = start + 2 * FLAGS.child_num_branches + layer_id
-                                print(np.reshape(arc[start: end], [-1]))
-                                start = end
-                        print(f"val_acc={acc:<6.4f}")
-                        print("-" * 80)
-                    print("-" * 80)
-
-                print(f"Epoch {epoch}: Eval")
-                if FLAGS.child_fixed_arc is None:
-                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
-                    child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
-                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch)
 
             if epoch >= FLAGS.num_epochs:
                 break

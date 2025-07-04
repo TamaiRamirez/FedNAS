@@ -12,7 +12,7 @@ from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm
 
 DEFINE_integer("batch_size", 128, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
-DEFINE_integer("child_num_layers", 14, "")
+DEFINE_integer("child_num_layers", 24, "")
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")

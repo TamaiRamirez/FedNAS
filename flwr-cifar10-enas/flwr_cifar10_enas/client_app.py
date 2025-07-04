@@ -48,7 +48,8 @@ def client_fn(context: Context):
 
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    data = load_data(partition_id, num_partitions)
+    #data = load_data(partition_id, num_partitions)
+    data = load_data(0, 1) # No partitions
     epochs = context.run_config["local-epochs"]
     batch_size = context.run_config["batch-size"]
     verbose = context.run_config.get("verbose")
