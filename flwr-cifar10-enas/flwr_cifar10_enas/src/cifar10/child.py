@@ -12,15 +12,15 @@ from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm
 
 DEFINE_integer("batch_size", 128, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
-DEFINE_integer("child_num_layers", 24, "")
+DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")
 DEFINE_float("child_l2_reg", 0.00025, "")
-DEFINE_float("child_lr", 0.001, "")
+DEFINE_float("child_lr", 0.1, "")
 DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_boolean("child_lr_cosine", True, "Use cosine lr schedule")
-DEFINE_float("child_lr_dec_rate", 0.01, "")
+DEFINE_float("child_lr_dec_rate", 0.1, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
 DEFINE_float("child_lr_min", 0.0005, "for lr schedule")
 DEFINE_integer("child_lr_T_0", 10, "for lr schedule")
@@ -154,7 +154,7 @@ class Child(object):
   def __init__(self,
                images,
                labels,
-               eval_batch_size=128,
+               eval_batch_size=100,
                clip_mode=None,
                lr_dec_start=0,
                optim_algo=None,
@@ -287,6 +287,7 @@ class Child(object):
     total_exp = 0
     for batch_id in range(num_batches):
       acc = acc_op(logits, labels)
+      # print(f"ACC: {acc}")
       total_acc += acc
       total_exp += self.eval_batch_size
       if verbose:

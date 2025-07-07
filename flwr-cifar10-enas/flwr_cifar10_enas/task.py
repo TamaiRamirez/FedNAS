@@ -25,6 +25,8 @@ from flwr_cifar10_enas.src.cifar10.data_utils import read_data
 from flwr_cifar10_enas.src.cifar10.macro_controller import MacroController
 from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild
 
+from collections import Counter
+
 # from src.cifar10.micro_controller import MicroController
 # from src.cifar10.micro_child import MicroChild
 
@@ -79,13 +81,30 @@ def load_data(partition_id, num_partitions):
     
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)
+
+    # Duplicate the Dataset
+    images["train"], labels["train"] = np.concatenate((images["train"],images["train"]), axis=0), np.concatenate((labels["train"],labels["train"]), axis=0)
+    # images["valid"], labels["valid"] = np.concatenate((images["valid"],images["valid"]), axis=0), np.concatenate((labels["valid"], labels["valid"]), axis=0)
     
-    images["test"] = np.float32((test_set["img"] - mean) / std)
+    images["test"] = np.transpose(np.reshape(test_set["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1])
+    images["test"] = np.float32((images["test"] - mean) / std)
     labels["test"] = np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
     print("Number of images in dataset (Test):", images["test"].shape[0])
+    print(f"Train Shape: {images['train'].shape, labels['train'].shape}")
+    print(f"Test Shape: {images['test'].shape, labels['test'].shape}")
+    
+
+    print("-" * 80)
+    print("Label distribution:")
+    for split in ["train", "valid", "test"]:
+        label_counts = Counter(labels[split])
+        print(f"{split.upper()} set class distribution:")
+        for cls in sorted(label_counts):
+            print(f"  Class {cls}: {label_counts[cls]} samples")
+        print("-" * 40)
     print("-" * 80)
     return {"images": images, "labels": labels}
 
@@ -118,8 +137,8 @@ def ndarray_to_weights(array_data, keys):
     
     # Ensure array_data is a list of arrays
     array_data = np.asarray(array_data, dtype=object)
-    
-    return {key: np.asarray(array_data[i]) for i, key in enumerate(keys)}
+
+    return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
 
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
@@ -127,13 +146,13 @@ DEFINE_string("data_path", "data/cifar10", "")
 DEFINE_string("output_dir", "outputs", "")
 
 DEFINE_integer("controller_train_steps", 50, "")
-DEFINE_integer("controller_train_every", 10,
+DEFINE_integer("controller_train_every", 1,
                "train the controller after this number of epochs") #This values has to be multiple of eval_every_epochs
 DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
-DEFINE_integer("eval_every_epochs", 2, "How many epochs to eval")
-DEFINE_integer("num_epochs", 310, "How many epochs to train")
+DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
+DEFINE_integer("num_epochs", 320, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
@@ -163,7 +182,7 @@ class Trainer:
             self.dataset["images"],
             self.dataset["labels"],
             clip_mode="norm",
-            optim_algo="adam",
+            optim_algo="momentum",
             child_weights=self.arch["child_weights"],
             transfer=self.transfer
         )
@@ -304,6 +323,7 @@ class Trainer:
                 child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                 
                 test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
+                # print(f"TEST IMAGES BATCH: {test_images_batch.shape[0]}")
                 child_test_logits = self.ops['child']['test_model'](test_images_batch)
                 
                 print("-" * 80)
@@ -332,8 +352,9 @@ class Trainer:
                     print("-" * 80)
                 
                 print(f"Epoch {epoch}: Eval")
-                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
-                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch)
+                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch,verbose=True)
+                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=True)
+                print(f"Time Running: {curr_time - start_time}")
                 print("-" * 80)
 
                 if FLAGS.controller_training and epoch % FLAGS.controller_train_every == 0:
