@@ -3,6 +3,7 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
+from .my_strategy import CustomFedAvg
 
 from flwr_cifar10_basic.task import load_model
 
@@ -14,7 +15,7 @@ def server_fn(context: Context):
     parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = strategy = FedAvg(
+    strategy = CustomFedAvg(
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_available_clients=2,

@@ -15,7 +15,9 @@ from tensorflow.keras.optimizers import Adam
 
 from sklearn.model_selection import train_test_split
 
-import tensorflow as tf
+import tomli
+from pathlib import Path
+from collections import Counter
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -29,6 +31,13 @@ if gpus:
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+
+toml_path = Path(__file__).parent.parent / "pyproject.toml"
+with toml_path.open("rb") as f:
+    toml_config = tomli.load(f)
+PROJECT_PATH = toml_config["tool"]["flwr"]["app"]["config"]["project-path"]
+
 
 def load_model():
     # Define a simple CNN for CIFAR-10 and set Adam optimizer
@@ -87,23 +96,26 @@ def load_data(partition_id, num_partitions):
     train_set = fds.load_partition(partition_id, "train")
     train_set.set_format("numpy")
 
+    # Shuffle train set
+    train_set = train_set.shuffle(seed=42)
+
     test_set = fds.load_split(split="test")
     test_set.set_format("numpy")
 
-    # print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-    # print("Number of images Original Dataset TEST:", test_set.shape[0])
+    print("-" * 80)
+    print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+    print("Number of images Original Dataset TEST:", test_set.shape[0])
 
     # Original dataset: X_train (N, 32, 32, 3)
     # Let's generate 3 augmented datasets:
     aug1 = np.array([augment_image(img) for img in train_set["img"]])
     aug2 = np.array([augment_image(img) for img in train_set["img"]])
-    aug3 = np.array([augment_image(img) for img in train_set["img"]])
 
     # Combine all:
-    X_train = np.concatenate((train_set["img"], aug1, aug2, aug3), axis=0)
+    X_train = np.concatenate((aug1, aug2), axis=0)
 
     # Similarly for labels (assuming y_train shape (N,))
-    y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"], train_set["label"]), axis=0)
+    y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
     
     # Divide data on each node: 36000 images train, 12000 valid, 12000 test
     X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
@@ -121,10 +133,21 @@ def load_data(partition_id, num_partitions):
     images["train"] = (images["train"] - mean) / std
     images["valid"] = (images["valid"] - mean) / std
     
-    images["test"] = (test_set["img"] - mean) / std
-    labels["test"] = test_set["label"]
+    images["test"] = np.transpose(np.reshape(test_set["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1])
+    images["test"], labels["test"] = (images["test"] - mean) / std, test_set["label"]
 
-    # print("Number of images in quadrupled dataset (Train):", X_train.shape[0])
-    # print("Number of images in quadrupled dataset (Valid):", X_valid.shape[0])
-    # print("Number of images in quadrupled dataset (Test):", images["test"].shape[0])
+    print("Number of images in dataset (Train):", images["train"].shape[0])
+    print("Number of images in dataset (Valid):", images["valid"].shape[0])
+    print("Number of images in dataset (Test):", images["test"].shape[0])
+    
+
+    print("-" * 80)
+    print("Label distribution:")
+    for split in ["train", "valid", "test"]:
+        label_counts = Counter(labels[split])
+        print(f"{split.upper()} set class distribution:")
+        for cls in sorted(label_counts):
+            print(f"  Class {cls}: {label_counts[cls]} samples")
+        print("-" * 40)
+    print("-" * 80)
     return images, labels
