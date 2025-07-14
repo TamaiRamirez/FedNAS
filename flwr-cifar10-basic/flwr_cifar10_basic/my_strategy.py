@@ -51,7 +51,7 @@ class CustomFedAvg(FedAvg):
         result = super().evaluate(server_round, parameters)
 
         if result is None:
-            print(f"[Round {server_round}] No evaluation data available.")
+            # print(f"[Round {server_round}] No evaluation data available.")
             return None
 
         loss, metrics = result

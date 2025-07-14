@@ -10,9 +10,9 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Flatten, Dropout, Input
-from tensorflow.keras.optimizers import Adam
-
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, Activation, BatchNormalization
+from keras import optimizers
+from keras.initializers import he_normal
 from sklearn.model_selection import train_test_split
 
 import tomli
@@ -47,12 +47,22 @@ def load_model():
     inputs = Input(shape=(32, 32, 3))
     x = base_model(inputs, training=False)
     x = Flatten()(x)
-    x = Dense(256, activation='relu')(x)
+    x = Dense(4096, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='fc_cifa10')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
     x = Dropout(0.5)(x)
-    outputs = Dense(10, activation='softmax')(x)
+    x = Dense(4096, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='fc_c2')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Dropout(0.5)(x)
+    x = Dense(10, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='predictions')(x)
+    x = BatchNormalization()(x)
+    outputs = Activation('softmax')(x)
 
     model = Model(inputs, outputs)
-    model.compile("adam", "sparse_categorical_crossentropy", metrics=["accuracy"])
+
+    sgd = optimizers.SGD(learning_rate=0.1, momentum=0.9, nesterov=True)
+    model.compile(loss="sparse_categorical_crossentropy", optimizer=sgd, metrics=["accuracy"])
     return model
 
 
