@@ -2,9 +2,9 @@
 
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
+import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler
 from flwr_cifar10_basic.task import load_data, load_model, PROJECT_PATH
-
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -16,19 +16,20 @@ class FlowerClient(NumPyClient):
         self.epochs = epochs
         self.batch_size = batch_size
         self.verbose = verbose
-        self.actual_round = 0
         self.partition_id = partition_id
 
-    @staticmethod # Por defecto al ser un metodo de clase se le pasa la variable self pero entonces se añade una variable extra al paso de la función, con este label se arregla
+    @staticmethod
     def scheduler(epoch):
-        if epoch < 80:
-            return 0.1
-        if epoch < 160:
-            return 0.01
-        return 0.001
+        eta_max = 0.01  # valor inicial
+        eta_min = 0.001  # valor mínimo
+        T_max = 310  # número total de epochs
+
+        cosine_decay = 0.5 * (1 + tf.math.cos(tf.constant(epoch / T_max * 3.1415926535)))
+        lr = eta_min + (eta_max - eta_min) * cosine_decay
+        return float(lr)
 
     def fit(self, parameters, config):
-        self.actual_round += 1
+        actual_round = config["round"]
         self.model.set_weights(parameters)
         change_lr = LearningRateScheduler(self.scheduler)
         H = self.model.fit(
@@ -38,7 +39,7 @@ class FlowerClient(NumPyClient):
             validation_data=(self.images["valid"],self.labels["valid"]),
             batch_size=self.batch_size,
             verbose=self.verbose,
-            callbacks=[TensorBoard(log_dir=f"{PROJECT_PATH}/logs/fit/client_{self.partition_id}/round_{self.actual_round}"), change_lr]
+            callbacks=[TensorBoard(log_dir=f"{PROJECT_PATH}/logs/fit/client_{self.partition_id}/round_{actual_round}"), change_lr]
         )
 
         # Get Train Metrics
@@ -55,8 +56,6 @@ class FlowerClient(NumPyClient):
         loss_test, acc_test = self.model.evaluate(self.images["test"], self.labels["test"], verbose=0)
 
         return loss_test, len(self.images["test"]), {
-            "train_accuracy": acc_train,
-            "val_accuracy": acc_val,
             "test_accuracy": acc_test,
         }
 

@@ -7,6 +7,10 @@ from .my_strategy import CustomFedAvg
 
 from flwr_cifar10_basic.task import load_model
 
+def fit_config(rnd: int):
+    return {"round": rnd}
+
+
 def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
@@ -20,6 +24,7 @@ def server_fn(context: Context):
         fraction_evaluate=1.0,
         min_available_clients=2,
         initial_parameters=parameters,
+        on_fit_config_fn=fit_config
     )
     config = ServerConfig(num_rounds=num_rounds)
 

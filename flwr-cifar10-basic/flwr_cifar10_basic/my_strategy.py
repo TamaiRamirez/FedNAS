@@ -18,10 +18,13 @@ class CustomFedAvg(FedAvg):
         super().__init__(*args, **kwargs)
 
         # Dictionary to store metrics
-        self.results_to_save = {}
+        self.results_to_save = {"0": {
+        "loss": 10.0,
+        "test_accuracy": 0.0}}
 
         # TensorBoard summary writer
         shutil.rmtree(f"{PROJECT_PATH}/logs/tensorboard/")
+        shutil.rmtree(f"{PROJECT_PATH}/logs/fit/")
         current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
         log_dir = f"{PROJECT_PATH}/logs/tensorboard/{current_time}"
         self.tb_writer = tf.summary.create_file_writer(log_dir)
