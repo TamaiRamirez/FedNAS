@@ -45,15 +45,20 @@ class FlowerClient(NumPyClient):
         train_acc = H.history["accuracy"][-1]
         val_acc = H.history["val_accuracy"][-1]
 
-        return self.model.get_weights(), len(self.images["train"]), {
-            "train_accuracy": train_acc,
-            "val_accuracy": val_acc,
-        }
+        return self.model.get_weights(), len(self.images["train"]), {}
 
     def evaluate(self, parameters, config):
         self.model.set_weights(parameters)
-        loss, accuracy = self.model.evaluate(self.images["test"], self.labels["test"], verbose=1)
-        return loss, len(self.images["test"]), {"test_accuracy": accuracy}
+
+        # loss_train, acc_train = self.model.evaluate(self.images["train"], self.labels["train"], verbose=0)
+        # loss_val, acc_val = self.model.evaluate(self.images["valid"], self.labels["valid"], verbose=0)
+        loss_test, acc_test = self.model.evaluate(self.images["test"], self.labels["test"], verbose=0)
+
+        return loss_test, len(self.images["test"]), {
+            "train_accuracy": acc_train,
+            "val_accuracy": acc_val,
+            "test_accuracy": acc_test,
+        }
 
 
 def client_fn(context: Context):
