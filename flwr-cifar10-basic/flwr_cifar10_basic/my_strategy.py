@@ -3,10 +3,13 @@ from flwr.server.client_proxy import ClientProxy, EvaluateRes
 from flwr.server.strategy import FedAvg
 import json
 from datetime import datetime
+from datetime import timedelta
 import shutil
 
 from .task import load_model, PROJECT_PATH
 import tensorflow as tf  # Asegúrate de importar TensorFlow
+import os
+import time
 
 class CustomFedAvg(FedAvg):
     """A strategy that keeps the core functionality of FedAvg unchanged but enables
@@ -14,20 +17,26 @@ class CustomFedAvg(FedAvg):
     file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, num_rounds, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Dictionary to store metrics
-        self.results_to_save = {"0": {
-        "loss": 10.0,
-        "test_accuracy": 0.0}}
-
+        self.results_to_save = {}
+        self.start_time = time.time()
+        self.num_rounds = num_rounds
         # TensorBoard summary writer
-        shutil.rmtree(f"{PROJECT_PATH}/logs/tensorboard/")
-        shutil.rmtree(f"{PROJECT_PATH}/logs/fit/")
+        if os.path.isdir(f"{PROJECT_PATH}/logs/tensorboard/"):
+            shutil.rmtree(f"{PROJECT_PATH}/logs/tensorboard/")
+        if os.path.isdir(f"{PROJECT_PATH}/logs/fit/"):
+            shutil.rmtree(f"{PROJECT_PATH}/logs/fit/")
         current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
         log_dir = f"{PROJECT_PATH}/logs/tensorboard/{current_time}"
         self.tb_writer = tf.summary.create_file_writer(log_dir)
+
+    # def configure_fit(self, server_round, parameters, client_manager):
+    #     if self.start_time is None:
+    #         self.start_time = time.time()  # marca el inicio justo antes de la primera ronda
+    #     return super().configure_fit(server_round, parameters, client_manager)
 
     def aggregate_fit(
         self,
@@ -40,7 +49,7 @@ class CustomFedAvg(FedAvg):
         parameters_aggregated, metrics_aggregated = super().aggregate_fit(
             server_round, results, failures
         )
-
+            
         # # Instantiate and load model
         # model = load_model()
         # weights = parameters_to_ndarrays(parameters_aggregated)
@@ -93,6 +102,11 @@ class CustomFedAvg(FedAvg):
         print(f"[Round {server_round}] Aggregated Metrics:")
         for k, v in round_results.items():
             print(f"  {k}: {v:.4f}")
+
+        if server_round == self.num_rounds:  # última ronda
+            elapsed = time.time() - self.start_time
+            elapsed_td = timedelta(seconds=int(elapsed))
+            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum
 

@@ -20,6 +20,7 @@ def server_fn(context: Context):
 
     # Define strategy
     strategy = CustomFedAvg(
+        num_rounds=num_rounds,
         fraction_fit=1.0,
         fraction_evaluate=1.0,
         min_available_clients=2,

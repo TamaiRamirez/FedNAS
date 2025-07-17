@@ -42,23 +42,23 @@ PROJECT_PATH = toml_config["tool"]["flwr"]["app"]["config"]["project-path"]
 
 def load_model():
     # Model used Le-Net https://github.com/BIGBALLON/cifar-10-cnn/blob/master/README.md"
-    weight_decay  = 0.0001
+    weight_decay  = 0.00025
     
     model = Sequential()
     model.add(Input(shape=(32, 32, 3)))
-    model.add(Conv2D(8, (5, 5), padding='same', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(MaxPooling2D((2, 2)))
+    model.add(Conv2D(8, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
     model.add(BatchNormalization())
     model.add(Dropout(0.5))
-    model.add(Conv2D(16, (5, 5), padding='same', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(MaxPooling2D((2, 2)))
+    model.add(Conv2D(16, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
     model.add(BatchNormalization())
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.5))
     model.add(Flatten())
-    model.add(Dense(128, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
-    model.add(Dense(64, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
-    model.add(Dense(10, activation = 'softmax', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
-    sgd = optimizers.SGD(learning_rate=0.01, momentum=0.9, nesterov=True)
+    model.add(Dense(128, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+    model.add(Dense(64, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+    model.add(Dense(10, activation = 'softmax', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+    sgd = optimizers.SGD(learning_rate=0.1, momentum=0.9, nesterov=True)
     model.compile(loss='sparse_categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
     return model
 
@@ -108,28 +108,40 @@ def load_data(partition_id, num_partitions):
 
     test_set = fds.load_split(split="test")
     test_set.set_format("numpy")
-
+    # Shuffle test set
+    test_set = test_set.shuffle(seed=42)
     print("-" * 80)
     print("Number of images Original Dataset TRAIN:", train_set.shape[0])
     print("Number of images Original Dataset TEST:", test_set.shape[0])
 
     # Original dataset: X_train (N, 32, 32, 3)
     # Let's generate 3 augmented datasets:
-    aug1 = np.array([augment_image(img) for img in train_set["img"]])
-    aug2 = np.array([augment_image(img) for img in train_set["img"]])
+    # aug1 = np.array([augment_image(img) for img in train_set["img"]])
+    # aug2 = np.array([augment_image(img) for img in train_set["img"]])
 
-    # Combine all:
-    X_train = np.concatenate((aug1, aug2), axis=0)
+    # # Combine all:
+    # X_train = np.concatenate((aug1, aug2), axis=0)
 
-    # Similarly for labels (assuming y_train shape (N,))
-    y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
+    # # Similarly for labels (assuming y_train shape (N,))
+    # y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
     
-    # Divide data on each node: 36000 images train, 12000 valid, 12000 test
-    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+    # # Divide data on each node: 36000 images train, 12000 valid, 12000 test
+    # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.1, random_state=42, stratify=y_train)
+
+    X_train, X_valid, y_train, y_valid = train_test_split(train_set["img"], train_set["label"], test_size=0.2, random_state=42, stratify=train_set["label"])
+
+    aug1 = np.array([augment_image(img) for img in X_train])
+    aug2 = np.array([augment_image(img) for img in X_train])
+
+    X_train = np.concatenate((aug1, aug2), axis=0)
+    y_train = np.concatenate((y_train, y_train), axis=0)
 
     # Images has to be float32 and labels int32
-    images["train"], labels["train"] = np.transpose(np.reshape(X_train / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), y_train
-    images["valid"], labels["valid"] = np.transpose(np.reshape(X_valid / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), y_valid
+    # images["train"], labels["train"] = np.transpose(np.reshape(X_train / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(y_train)
+    # images["valid"], labels["valid"] = np.transpose(np.reshape(X_valid / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(y_valid)
+
+    images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
+    images["valid"], labels["valid"] =(X_valid / 255.0).astype("float32"), np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
@@ -137,11 +149,11 @@ def load_data(partition_id, num_partitions):
     # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
     # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
-    images["train"] = (images["train"] - mean) / std
-    images["valid"] = (images["valid"] - mean) / std
+    images["train"] = np.float32((images["train"] - mean) / std)
+    images["valid"] = np.float32((images["valid"] - mean) / std)
     
-    images["test"] = np.transpose(np.reshape(test_set["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1])
-    images["test"], labels["test"] = (images["test"] - mean) / std, test_set["label"]
+    images["test"] = (test_set["img"] / 255.0).astype("float32")
+    images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
