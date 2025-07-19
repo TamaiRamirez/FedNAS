@@ -24,19 +24,39 @@ from flwr_cifar10_enas.src.utils import print_user_flags
 from flwr_cifar10_enas.src.cifar10.data_utils import read_data
 from flwr_cifar10_enas.src.cifar10.macro_controller import MacroController
 from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild
-
+from sklearn.model_selection import train_test_split
 from collections import Counter
+
+import matplotlib.pyplot as plt
 
 # from src.cifar10.micro_controller import MicroController
 # from src.cifar10.micro_child import MicroChild
 
 import copy
 from functools import lru_cache
+import tomli
+from pathlib import Path
 
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 fds = None  # Cache FederatedDataset
+
+toml_path = Path(__file__).parent.parent / "pyproject.toml"
+with toml_path.open("rb") as f:
+    toml_config = tomli.load(f)
+PROJECT_PATH = toml_config["tool"]["flwr"]["app"]["config"]["project-path"]
+
+def smooth_curve(points, factor=0.8):
+    points = np.array(points, dtype=np.float32)  # 👈 fuerza float
+    smoothed_points = []
+    for point in points:
+        if smoothed_points:
+            previous = smoothed_points[-1]
+            smoothed_points.append(previous * factor + point * (1 - factor))
+        else:
+            smoothed_points.append(point)
+    return smoothed_points
 
 def load_data(partition_id, num_partitions):
     # Download and partition dataset
@@ -49,7 +69,7 @@ def load_data(partition_id, num_partitions):
             dataset="uoft-cs/cifar10",
             partitioners={"train": partitioner},
         )
-
+        
     train_set = fds.load_partition(partition_id, "train")
     train_set.set_format("numpy")
 
@@ -58,54 +78,46 @@ def load_data(partition_id, num_partitions):
 
     test_set = fds.load_split(split="test")
     test_set.set_format("numpy")
-    # test_set = test_set.shuffle(seed=42)
-    # half_size = len(test_set) // num_partitions
-    # test_set = test_set.select(range(half_size))
-
+    # Shuffle test set
+    test_set = test_set.shuffle(seed=42)
     print("-" * 80)
     print("Number of images Original Dataset TRAIN:", train_set.shape[0])
     print("Number of images Original Dataset TEST:", test_set.shape[0])
-    
-    # Divide Train Set into Train and Validation
-    partition = train_set.train_test_split(test_size=0.2)
 
-    # Images has to be float32 and labels int32
-    images["train"], labels["train"] = np.transpose(np.reshape(partition["train"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["train"]["label"])
-    images["valid"], labels["valid"] = np.transpose(np.reshape(partition["test"]["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(partition["test"]["label"])
+
+    X_train, X_valid, y_train, y_valid = train_test_split(train_set["img"], train_set["label"], test_size=0.2, random_state=42, stratify=train_set["label"])
+
+    X_train = np.concatenate((X_train, X_train), axis=0)
+    y_train = np.concatenate((y_train, y_train), axis=0)
+
+    images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
+    images["valid"], labels["valid"] =(X_valid / 255.0).astype("float32"), np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
     # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
     # print("std: {}".format(np.reshape(std * 255.0, [-1])))
-    
+
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)
-
-    # Duplicate the Dataset
-    images["train"], labels["train"] = np.concatenate((images["train"],images["train"]), axis=0), np.concatenate((labels["train"],labels["train"]), axis=0)
-    # images["valid"], labels["valid"] = np.concatenate((images["valid"],images["valid"]), axis=0), np.concatenate((labels["valid"], labels["valid"]), axis=0)
     
-    images["test"] = np.transpose(np.reshape(test_set["img"] / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1])
-    images["test"] = np.float32((images["test"] - mean) / std)
-    labels["test"] = np.int32(test_set["label"])
+    images["test"] = (test_set["img"] / 255.0).astype("float32")
+    images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
     print("Number of images in dataset (Test):", images["test"].shape[0])
-    print(f"Train Shape: {images['train'].shape, labels['train'].shape}")
-    print(f"Test Shape: {images['test'].shape, labels['test'].shape}")
     
-
     print("-" * 80)
-    print("Label distribution:")
-    for split in ["train", "valid", "test"]:
-        label_counts = Counter(labels[split])
-        print(f"{split.upper()} set class distribution:")
-        for cls in sorted(label_counts):
-            print(f"  Class {cls}: {label_counts[cls]} samples")
-        print("-" * 40)
-    print("-" * 80)
+    # print("Label distribution:")
+    # for split in ["train", "valid", "test"]:
+    #     label_counts = Counter(labels[split])
+    #     print(f"{split.upper()} set class distribution:")
+    #     for cls in sorted(label_counts):
+    #         print(f"  Class {cls}: {label_counts[cls]} samples")
+    #     print("-" * 40)
+    # print("-" * 80)
     return {"images": images, "labels": labels}
 
 def weights_to_ndarrays(data_dict, keys):
@@ -152,18 +164,20 @@ DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
-DEFINE_integer("num_epochs", 320, "How many epochs to train")
+DEFINE_integer("num_epochs", 310, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
     
 class Trainer:
-    def __init__(self, dataset=None, arch=None, transfer=False):
+    def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None):
         self.dataset = dataset
         self.arch = arch
         self.transfer = transfer
+        self.actual_round = actual_round
+        self.partition_id = partition_id
         self.ops = {}
-    
+        
     def get_ops(self):
         """
         Args:
@@ -290,7 +304,11 @@ class Trainer:
         print("-" * 80)
         print("Starting session")
         start_time = datetime.now()
-        
+        child_train_accuracies = []
+        child_valid_accuracies = []
+        child_train_losses = []
+        controller_losses = []
+        controller_accuracies = []
         while True:
             if batch_iterator is None:
                 batch_iterator = self.ops['child']['dataset'].as_numpy_iterator()
@@ -352,8 +370,11 @@ class Trainer:
                     print("-" * 80)
                 
                 print(f"Epoch {epoch}: Eval")
-                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch,verbose=True)
-                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=True)
+                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch,verbose=False)
+                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=False)
+                
+                child_train_accuracies.append(float(child_train_acc/FLAGS.batch_size))
+                child_valid_accuracies.append(float(child_valid_acc))
                 print(f"Time Running: {curr_time - start_time}")
                 print("-" * 80)
 
@@ -375,13 +396,59 @@ class Trainer:
                             log_string += f"bl={bl.value():4f}\t"
                             # log_string + = f"Time: {curr_time - start_time}"
                             print(log_string)
+                    controller_losses.append(float(controller_loss))
+                    controller_accuracies.append(float(controller_valid_acc))
                     print("-" * 80)
 
             if epoch >= FLAGS.num_epochs:
+                # print(f"[TRAIN FINISHED] child_valid_acc={child_valid_acc}, child_test_acc={child_test_acc}")
+                # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+
+                # test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
+                # child_test_logits = self.ops['child']['test_model'](test_images_batch)
+
+                # child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch, verbose=False)
+                # child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch, verbose=False)
+                
+                # print("Train Accuracies:", child_train_accuracies)
+                # print("Valid Accuracies:", child_valid_accuracies)
+                
+                # Directorio de guardado
+                plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
+                os.makedirs(plot_dir, exist_ok=True)
+                
+                # Gráfico de precisión (accuracy)
+                plt.figure()
+                plt.plot(child_train_accuracies, label="Child Train Accuracy")
+                plt.plot(child_valid_accuracies, label="Child Validation Accuracy")
+                plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
+                plt.xlabel("Epoch")
+                plt.ylabel("Accuracy")
+                plt.ylim(0, 1)
+                plt.legend()
+                plt.grid(True)
+                plt.tight_layout()
+                plt.savefig(f"{plot_dir}/child_accuracy.png")
+                plt.close()
+                
+                # Gráfico de precisión (accuracy)
+                plt.figure()
+                # plt.plot(controller_losses, label="Controller Loss")
+                plt.plot(controller_accuracies, label="Controller Accuracy")
+                plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
+                plt.xlabel("Epoch")
+                plt.ylabel("Accuracy")
+                plt.ylim(0, 1)
+                plt.legend()
+                plt.grid(True)
+                plt.tight_layout()
+                plt.savefig(f"{plot_dir}/controller_metrics.png")
+                plt.close()
+                
                 break
 
         return {
-                "child_train_acc": float(child_train_acc/FLAGS.batch_size),
                 "child_valid_acc": float(child_valid_acc),
                 "child_test_acc": float(child_test_acc),
                 "child_weights": self.ops["child"]["weights"],

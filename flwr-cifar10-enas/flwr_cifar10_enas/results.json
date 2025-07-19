@@ -1,0 +1,27 @@
+{
+    "1": {
+        "loss": 0.0,
+        "child_valid_acc": 0.595,
+        "child_test_acc": 0.5700000000000001
+    },
+    "2": {
+        "loss": 0.0,
+        "child_valid_acc": 0.55,
+        "child_test_acc": 0.6
+    },
+    "3": {
+        "loss": 0.0,
+        "child_valid_acc": 0.47,
+        "child_test_acc": 0.525
+    },
+    "4": {
+        "loss": 0.0,
+        "child_valid_acc": 0.48,
+        "child_test_acc": 0.59
+    },
+    "5": {
+        "loss": 0.0,
+        "child_valid_acc": 0.46499999999999997,
+        "child_test_acc": 0.5549999999999999
+    }
+}
