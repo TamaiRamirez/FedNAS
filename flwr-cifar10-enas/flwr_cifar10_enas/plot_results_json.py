@@ -1,10 +1,10 @@
 import json
 import matplotlib.pyplot as plt
 import os
-
+import numpy as np
 # Ruta al archivo
-results_path = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic/results.json"
-output_dir = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic/plots"
+results_path = "/workspace/flwr-cifar10-enas/flwr_cifar10_enas/results.json"
+output_dir = "/workspace/flwr-cifar10-enas/flwr_cifar10_enas/plots"
 os.makedirs(output_dir, exist_ok=True)
 
 # Cargar los resultados
@@ -34,6 +34,7 @@ plt.xlabel("Round")
 plt.ylabel("Accuracy")
 plt.title("Global Evaluation (Accuracy)")
 plt.ylim(0,1)
+plt.xticks(np.arange(1, 6, 1))
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
