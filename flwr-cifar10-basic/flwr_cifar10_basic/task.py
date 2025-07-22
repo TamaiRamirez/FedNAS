@@ -39,29 +39,74 @@ toml_path = Path(__file__).parent.parent / "pyproject.toml"
 with toml_path.open("rb") as f:
     toml_config = tomli.load(f)
 PROJECT_PATH = toml_config["tool"]["flwr"]["app"]["config"]["project-path"]
+MODEL = toml_config["tool"]["flwr"]["app"]["config"]["model"]
 
 def load_model():
-    # Model used Le-Net https://github.com/BIGBALLON/cifar-10-cnn/blob/master/README.md"
-    weight_decay  = 0.00025
-    
-    model = Sequential()
-    model.add(Input(shape=(32, 32, 3)))
-    model.add(Conv2D(8, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.5))
-    model.add(Conv2D(16, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.5))
-    model.add(Flatten())
-    model.add(Dense(128, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(Dense(64, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    model.add(Dense(10, activation = 'softmax', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
-    sgd = optimizers.SGD(learning_rate=0.1, momentum=0.9, nesterov=True)
-    model.compile(loss='sparse_categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
-    return model
+    print(f"MODEL LOADED: {MODEL}")
+    if MODEL=='custom':
+        # Model used Le-Net https://github.com/BIGBALLON/cifar-10-cnn/blob/master/README.md"
+        weight_decay  = 0.00025
+        
+        model = Sequential()
+        model.add(Input(shape=(32, 32, 3)))
+        model.add(Conv2D(8, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.5))
+        model.add(Conv2D(16, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.5))
+        model.add(Flatten())
+        model.add(Dense(128, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(Dense(64, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(Dense(10, activation = 'softmax', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        sgd = optimizers.SGD(learning_rate=0.05, momentum=0.9, nesterov=True)
+        model.compile(loss='sparse_categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
+        return model
 
+    elif MODEL=='vgg19':
+        # Define a simple CNN for CIFAR-10 and set Adam optimizer
+        # Model used VGG 19 https://github.com/BIGBALLON/cifar-10-cnn/blob/master/README.md"
+        base_model = VGG19(weights='imagenet', include_top=False, input_shape=(32, 32, 3))
+        base_model.trainable = False  # Freeze the base model
+        inputs = Input(shape=(32, 32, 3))
+        x = base_model(inputs, training=False)
+        x = Flatten()(x)
+        x = Dense(4096, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='fc_cifa10')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(0.5)(x)
+        x = Dense(4096, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='fc_c2')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(0.5)(x)
+        x = Dense(10, use_bias = True, kernel_regularizer=keras.regularizers.l2(0.0001), kernel_initializer=he_normal(), name='predictions')(x)
+        x = BatchNormalization()(x)
+        outputs = Activation('softmax')(x)
+
+        model = Model(inputs, outputs)
+
+        sgd = optimizers.SGD(learning_rate=0.05, momentum=0.9, nesterov=True)
+        model.compile(loss="sparse_categorical_crossentropy", optimizer=sgd, metrics=["accuracy"])
+        return model
+
+    elif MODEL == 'lenet':
+        weight_decay  = 0.0001
+        model = Sequential()
+        model.add(Input(shape=(32, 32, 3)))
+        model.add(Conv2D(6, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+        model.add(Conv2D(16, (5, 5), padding='valid', activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay)))
+        model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+        model.add(Flatten())
+        model.add(Dense(120, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
+        model.add(Dense(84, activation = 'relu', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
+        model.add(Dense(10, activation = 'softmax', kernel_initializer='he_normal', kernel_regularizer=l2(weight_decay) ))
+        sgd = optimizers.SGD(learning_rate=.05, momentum=0.9, nesterov=True)
+        model.compile(loss='sparse_categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
+        return model
+    
 
 def augment_image(img, crop_size=32, pad_size=4, flip_prob=0.5):
     """
@@ -114,19 +159,6 @@ def load_data(partition_id, num_partitions):
     print("Number of images Original Dataset TRAIN:", train_set.shape[0])
     print("Number of images Original Dataset TEST:", test_set.shape[0])
 
-    # Original dataset: X_train (N, 32, 32, 3)
-    # Let's generate 3 augmented datasets:
-    # aug1 = np.array([augment_image(img) for img in train_set["img"]])
-    # aug2 = np.array([augment_image(img) for img in train_set["img"]])
-
-    # # Combine all:
-    # X_train = np.concatenate((aug1, aug2), axis=0)
-
-    # # Similarly for labels (assuming y_train shape (N,))
-    # y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
-    
-    # # Divide data on each node: 36000 images train, 12000 valid, 12000 test
-    # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.1, random_state=42, stratify=y_train)
 
     X_train, X_valid, y_train, y_valid = train_test_split(train_set["img"], train_set["label"], test_size=0.2, random_state=42, stratify=train_set["label"])
 
@@ -136,18 +168,11 @@ def load_data(partition_id, num_partitions):
     X_train = np.concatenate((aug1, aug2), axis=0)
     y_train = np.concatenate((y_train, y_train), axis=0)
 
-    # Images has to be float32 and labels int32
-    # images["train"], labels["train"] = np.transpose(np.reshape(X_train / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(y_train)
-    # images["valid"], labels["valid"] = np.transpose(np.reshape(X_valid / 255.0, [-1, 3, 32, 32]), [0, 2, 3, 1]), np.int32(y_valid)
-
     images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
     images["valid"], labels["valid"] =(X_valid / 255.0).astype("float32"), np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
-
-    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)

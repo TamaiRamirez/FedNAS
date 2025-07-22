@@ -1,10 +1,12 @@
 import json
 import matplotlib.pyplot as plt
 import os
+import numpy as np
+MODEL = 'lenet'
 
 # Ruta al archivo
-results_path = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic/results.json"
-output_dir = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic/plots"
+results_path = f"/workspace/flwr-cifar10-basic/flwr_cifar10_basic/results_{MODEL}.json"
+output_dir = f"/workspace/flwr-cifar10-basic/flwr_cifar10_basic/plots/{MODEL}"
 os.makedirs(output_dir, exist_ok=True)
 
 # Cargar los resultados
@@ -39,6 +41,7 @@ plt.xlabel("Round")
 plt.ylabel("Accuracy")
 plt.title("Global Evaluation (Accuracy)")
 plt.ylim(0,1)
+plt.xticks(np.arange(1,6,1))
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
@@ -54,6 +57,7 @@ plt.xlabel("Round")
 plt.ylabel("Loss")
 plt.title("Global Evaluation (Loss)")
 plt.legend()
+plt.xticks(np.arange(1,6,1))
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f"{output_dir}/loss_over_rounds.png")

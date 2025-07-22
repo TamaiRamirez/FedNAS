@@ -6,7 +6,7 @@ from datetime import datetime
 from datetime import timedelta
 import shutil
 
-from .task import load_model, PROJECT_PATH
+from .task import load_model, PROJECT_PATH, MODEL
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
@@ -17,20 +17,21 @@ class CustomFedAvg(FedAvg):
     file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
     """
 
-    def __init__(self, num_rounds, *args, **kwargs):
+    def __init__(self, num_rounds, model='custom', *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Dictionary to store metrics
         self.results_to_save = {}
         self.start_time = time.time()
         self.num_rounds = num_rounds
+        self.model = model
         # TensorBoard summary writer
-        if os.path.isdir(f"{PROJECT_PATH}/logs/tensorboard/"):
-            shutil.rmtree(f"{PROJECT_PATH}/logs/tensorboard/")
-        if os.path.isdir(f"{PROJECT_PATH}/logs/fit/"):
-            shutil.rmtree(f"{PROJECT_PATH}/logs/fit/")
+        if os.path.isdir(f"{PROJECT_PATH}/logs/{MODEL}/tensorboard/"):
+            shutil.rmtree(f"{PROJECT_PATH}/logs/{MODEL}/tensorboard/")
+        if os.path.isdir(f"{PROJECT_PATH}/logs/{MODEL}/fit/"):
+            shutil.rmtree(f"{PROJECT_PATH}/logs/{MODEL}/fit/")
         current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
-        log_dir = f"{PROJECT_PATH}/logs/tensorboard/{current_time}"
+        log_dir = f"{PROJECT_PATH}/logs/{MODEL}/tensorboard/{current_time}"
         self.tb_writer = tf.summary.create_file_writer(log_dir)
 
     # def configure_fit(self, server_round, parameters, client_manager):
@@ -89,7 +90,7 @@ class CustomFedAvg(FedAvg):
         self.results_to_save[server_round] = round_results
 
         # Guardar en JSON
-        with open(f"{PROJECT_PATH}/results.json", "w") as f:
+        with open(f"{PROJECT_PATH}/results_{MODEL}.json", "w") as f:
             json.dump(self.results_to_save, f, indent=4)
 
         # TensorBoard
@@ -106,7 +107,11 @@ class CustomFedAvg(FedAvg):
         if server_round == self.num_rounds:  # última ronda
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
+            with open(f"{PROJECT_PATH}/Training_time_{MODEL}.txt", 'w', encoding='utf-8') as archivo:
+                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+
+        
 
         return loss_total, metrics_accum
 

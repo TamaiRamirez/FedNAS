@@ -4,7 +4,7 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, LearningRateScheduler, Callback
-from flwr_cifar10_basic.task import load_data, load_model, PROJECT_PATH
+from flwr_cifar10_basic.task import load_data, load_model, PROJECT_PATH, MODEL
 import matplotlib.pyplot as plt
 import os
 
@@ -79,7 +79,7 @@ class FlowerClient(NumPyClient):
         scheduler = CosineAnnealingWithRestarts(
             eta_max=0.05,
             eta_min=0.0005,
-            T_0=150,
+            T_0=63,
             T_mul=1
         )
         lr_logger = LRSchedulerLogger()
@@ -91,7 +91,7 @@ class FlowerClient(NumPyClient):
             validation_data=(self.images["valid"],self.labels["valid"]),
             batch_size=self.batch_size,
             verbose=self.verbose,
-            callbacks=[TensorBoard(log_dir=f"{PROJECT_PATH}/logs/fit/client_{self.partition_id}/round_{actual_round}"), change_lr, lr_logger]
+            callbacks=[TensorBoard(log_dir=f"{PROJECT_PATH}/logs/{MODEL}/fit/client_{self.partition_id}/round_{actual_round}"), change_lr, lr_logger]
         )
 
         # # Get Train Metrics
@@ -99,13 +99,13 @@ class FlowerClient(NumPyClient):
         # val_acc = H.history["val_accuracy"][-1]
 
         # Directorio de guardado
-        plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{actual_round}"
+        plot_dir = f"{PROJECT_PATH}/plots/{MODEL}/client_{self.partition_id}/round_{actual_round}"
         os.makedirs(plot_dir, exist_ok=True)
         
         # Gráfico de precisión (accuracy)
         plt.figure()
-        plt.plot(smooth_curve(H.history["accuracy"]), label="Train Accuracy")
-        plt.plot(smooth_curve(H.history["val_accuracy"], factor=0.85), label="Validation Accuracy")
+        plt.plot(smooth_curve(H.history["accuracy"], factor=0.5), label="Train Accuracy")
+        plt.plot(smooth_curve(H.history["val_accuracy"], factor=0.55), label="Validation Accuracy")
         plt.title(f"Client {self.partition_id} - Accuracy (Round {actual_round})")
         plt.xlabel("Epoch")
         plt.ylabel("Accuracy")
@@ -118,8 +118,8 @@ class FlowerClient(NumPyClient):
 
         # Gráfico de pérdida (loss)
         plt.figure()
-        plt.plot(smooth_curve(H.history["loss"]), label="Train Loss")
-        plt.plot(smooth_curve(H.history["val_loss"], factor=0.85), label="Validation Loss")
+        plt.plot(smooth_curve(H.history["loss"], factor=0.5), label="Train Loss")
+        plt.plot(smooth_curve(H.history["val_loss"], factor=0.55), label="Validation Loss")
         plt.title(f"Client {self.partition_id} - Loss (Round {actual_round})")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")

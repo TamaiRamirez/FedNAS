@@ -25,10 +25,11 @@ clientapp = "flwr_cifar10_basic.client_app:app"
 
 [tool.flwr.app.config]
 num-server-rounds = 5
-local-epochs = 310
+local-epochs = 62
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic"
+model = "lenet"
 
 [tool.flwr.federations]
 default = "local-simulation"
