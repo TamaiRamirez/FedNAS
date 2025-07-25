@@ -164,7 +164,7 @@ DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
-DEFINE_integer("num_epochs", 310, "How many epochs to train")
+DEFINE_integer("num_epochs", 62, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
@@ -304,11 +304,18 @@ class Trainer:
         print("-" * 80)
         print("Starting session")
         start_time = datetime.now()
+
         child_train_accuracies = []
+        child_train_accs = []
+        child_train_lss = []
         child_valid_accuracies = []
         child_train_losses = []
-        controller_losses = []
+        child_valid_losses = []
+
+        controller_accs = []
+        controller_lss = []
         controller_accuracies = []
+        controller_losses = []
         while True:
             if batch_iterator is None:
                 batch_iterator = self.ops['child']['dataset'].as_numpy_iterator()
@@ -321,14 +328,14 @@ class Trainer:
             child_train_logits, child_loss, child_train_acc, child_grad_norm = self.child_train_op(images, labels)
             child_lr = self.ops['child']['lr']()
             global_step = self.ops["child"]["global_step"].value()
-            
+            child_train_accs.append(float(child_train_acc/FLAGS.batch_size))
+            child_train_lss.append(float(child_loss))
             if FLAGS.child_sync_replicas:
                 actual_step = global_step * FLAGS.child_num_aggregate
             else:
                 actual_step = global_step
 
             epoch = actual_step // self.ops["num_train_batches"]
-            curr_time = datetime.now()
 
             if global_step % FLAGS.log_every == 0:
                 log_string = f"epoch={epoch:<6d}\tch_step={global_step:<6d}\tloss={child_loss:.4f}\t"
@@ -337,12 +344,12 @@ class Trainer:
                 print(log_string)
 
             if actual_step % self.ops["eval_every"] == 0:
-                images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
-                child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                 
-                test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
+                # test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
                 # print(f"TEST IMAGES BATCH: {test_images_batch.shape[0]}")
-                child_test_logits = self.ops['child']['test_model'](test_images_batch)
+                # child_test_logits = self.ops['child']['test_model'](test_images_batch)
                 
                 print("-" * 80)
                 num_archs = 2
@@ -370,25 +377,32 @@ class Trainer:
                     print("-" * 80)
                 
                 print(f"Epoch {epoch}: Eval")
-                child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch,verbose=False)
-                child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=False)
+                # child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch,verbose=False)
+                # child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=False)
+                print(f"train_accuracy: {sum(child_train_accs)/len(child_train_accs)}")
+                print(f"train_loss: {sum(child_train_lss)/len(child_train_lss)}")
+                child_valid_acc, child_valid_loss = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
                 
-                child_train_accuracies.append(float(child_train_acc/FLAGS.batch_size))
+                child_train_accuracies.append(sum(child_train_accs)/len(child_train_accs))
+                child_train_losses.append(sum(child_train_lss)/len(child_train_lss))
                 child_valid_accuracies.append(float(child_valid_acc))
-                print(f"Time Running: {curr_time - start_time}")
+                child_valid_losses.append(float(child_valid_loss))
                 print("-" * 80)
-
                 if FLAGS.controller_training and epoch % FLAGS.controller_train_every == 0:
                     print(f"Epoch {epoch}: Training controller")
-                    images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
-                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                    # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                    # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                     for ct_step in range(FLAGS.controller_train_steps * FLAGS.controller_num_aggregate):
+                        images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                        child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                         controller_valid_acc = self.ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
-                        controller_loss, gn = self.controller_train_op(child_train_logits, labels)
+                        controller_loss, gn = self.controller_train_op(child_valid_rl_logits, labels_batch)
                         controller_entropy = 0
                         lr = self.ops["controller"]["lr"]()
                         bl = self.ops["controller"]["baseline"]
 
+                        controller_accs.append(float(controller_valid_acc))
+                        controller_lss.append(float(controller_loss))
                         if ct_step % FLAGS.log_every == 0:
                             curr_time = datetime.now()
                             log_string = f"ctrl_step={self.ops['controller']['train_step'].value():<6d}\tloss={controller_loss:.4f}\t"
@@ -396,24 +410,18 @@ class Trainer:
                             log_string += f"bl={bl.value():4f}\t"
                             # log_string + = f"Time: {curr_time - start_time}"
                             print(log_string)
-                    controller_losses.append(float(controller_loss))
-                    controller_accuracies.append(float(controller_valid_acc))
+                    controller_accuracies.append(sum(controller_accs)/len(controller_accs))
+                    controller_losses.append(sum(controller_lss)/len(controller_lss))
                     print("-" * 80)
+                
+                curr_time = datetime.now()
+                print(f"Time Running: {curr_time - start_time}")
+                print("-" * 80)
 
             if epoch >= FLAGS.num_epochs:
-                # print(f"[TRAIN FINISHED] child_valid_acc={child_valid_acc}, child_test_acc={child_test_acc}")
-                # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
-                # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                print("Test Accuracy: ")
+                child_test_acc, child_test_loss = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
 
-                # test_images_batch, test_labels_batch = next(self.ops['child']['dataset_test'].as_numpy_iterator())
-                # child_test_logits = self.ops['child']['test_model'](test_images_batch)
-
-                # child_valid_acc = self.ops["eval_func"]("valid", child_valid_rl_logits, labels_batch, verbose=False)
-                # child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch, verbose=False)
-                
-                # print("Train Accuracies:", child_train_accuracies)
-                # print("Valid Accuracies:", child_valid_accuracies)
-                
                 # Directorio de guardado
                 plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
                 os.makedirs(plot_dir, exist_ok=True)
@@ -422,24 +430,30 @@ class Trainer:
                 plt.figure()
                 plt.plot(smooth_curve(child_train_accuracies), label="Child Train Accuracy")
                 plt.plot(smooth_curve(child_valid_accuracies), label="Child Validation Accuracy")
+                plt.plot(smooth_curve(child_train_losses), label="Child Train Loss")
+                plt.plot(smooth_curve(child_valid_losses), label="Child Validation Loss")
+                # Línea horizontal punteada en y=1
+                plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
                 plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
                 plt.xlabel("Epoch")
                 plt.ylabel("Accuracy")
-                plt.ylim(0, 1)
+                # plt.ylim(0, 2)
                 plt.legend()
                 plt.grid(True)
                 plt.tight_layout()
-                plt.savefig(f"{plot_dir}/child_accuracy.png")
+                plt.savefig(f"{plot_dir}/child_metrics.png")
                 plt.close()
                 
                 # Gráfico de precisión (accuracy)
                 plt.figure()
-                # plt.plot(controller_losses, label="Controller Loss")
                 plt.plot(smooth_curve(controller_accuracies), label="Controller Accuracy")
+                plt.plot(smooth_curve(controller_losses), label="Controller Loss")
+                # Línea horizontal punteada en y=1
+                plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
                 plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
                 plt.xlabel("Epoch")
                 plt.ylabel("Accuracy")
-                plt.ylim(0, 1)
+                # plt.ylim(0, 2)
                 plt.legend()
                 plt.grid(True)
                 plt.tight_layout()
@@ -450,7 +464,9 @@ class Trainer:
 
         return {
                 "child_valid_acc": float(child_valid_acc),
+                "child_valid_loss": float(child_valid_loss),
                 "child_test_acc": float(child_test_acc),
+                "child_test_loss": float(child_test_loss),
                 "child_weights": self.ops["child"]["weights"],
                 "controller_trainable_variables": self.ops["controller"]["trainable_variables"]
                 }

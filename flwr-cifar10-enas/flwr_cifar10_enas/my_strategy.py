@@ -81,6 +81,8 @@ class CustomFedAvg(FedAvg):
         if server_round == self.num_rounds:  # última ronda
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
+            with open(f"{PROJECT_PATH}/Training_time.txt", 'w', encoding='utf-8') as archivo:
+                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum

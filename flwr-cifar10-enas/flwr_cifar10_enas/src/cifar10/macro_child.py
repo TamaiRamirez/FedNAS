@@ -855,13 +855,13 @@ class MacroChild(Child):
   class Loss(LayeredModel):
     def __init__(self):
       def sscewl(logits, labels):
-          return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+        return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 
       self.layers = [sscewl, fw.reduce_mean]
 
     def __call__(self, logits, labels):
-        x = self.layers[0](logits, labels)
-        return self.layers[1](x)
+      x = self.layers[0](logits, labels)
+      return self.layers[1](x)
 
 
   class Accuracy(LayeredModel):

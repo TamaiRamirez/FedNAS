@@ -36,7 +36,7 @@ class FlowerClient(NumPyClient):
             child_weights=None
             transfer=False
         else:
-            child_weights=ndarray_to_weights(parameters,self.keys)
+            child_weights=ndarray_to_weights(parameters, self.keys)
             transfer=True
         trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": self.controller_weights}, transfer, actual_round, self.partition_id)
         result = trainer.train()
@@ -48,6 +48,8 @@ class FlowerClient(NumPyClient):
         client_info = self.client_state.config_records["client_info"]
         client_info["last_valid_acc"] = result["child_valid_acc"]
         client_info["last_test_acc"] = result["child_test_acc"]
+        client_info["last_valid_loss"] = result["child_valid_loss"]
+        client_info["last_test_loss"] = result["child_test_loss"]
         # print(f"[FIT] child_valid_acc={result["child_valid_acc"]}, child_test_acc={result["child_test_acc"]}")
         return model_weights, len(model_weights), {}
     
@@ -55,10 +57,15 @@ class FlowerClient(NumPyClient):
         client_info = self.client_state.config_records["client_info"]
         valid_acc = client_info.get("last_valid_acc", 0.0)
         test_acc = client_info.get("last_test_acc", 0.0)
+        valid_loss = client_info.get("last_valid_loss", 0.0)
+        test_loss = client_info.get("last_test_loss", 0.0)
         # print(f"[EVALUATE] child_valid_acc={valid_acc}, child_test_acc={test_acc}")
-        return 0.0, len(self.data["images"]["test"]), {
+        return test_loss, len(self.data["images"]["test"]), {
             "child_valid_acc": valid_acc,
+            "child_valid_loss": valid_loss,
             "child_test_acc": test_acc,
+            "child_test_loss": test_loss
+
         }
 
 def client_fn(context: Context):
