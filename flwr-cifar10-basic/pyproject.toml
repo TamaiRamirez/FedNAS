@@ -25,7 +25,7 @@ clientapp = "flwr_cifar10_basic.client_app:app"
 
 [tool.flwr.app.config]
 num-server-rounds = 5
-local-epochs = 62
+local-epochs = 20
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-cifar10-basic/flwr_cifar10_basic"

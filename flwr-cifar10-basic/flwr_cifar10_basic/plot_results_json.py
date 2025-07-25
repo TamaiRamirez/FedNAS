@@ -2,7 +2,7 @@ import json
 import matplotlib.pyplot as plt
 import os
 import numpy as np
-MODEL = 'lenet'
+MODEL = 'vgg19'
 
 # Ruta al archivo
 results_path = f"/workspace/flwr-cifar10-basic/flwr_cifar10_basic/results_{MODEL}.json"
@@ -32,35 +32,23 @@ for rnd_str in sorted(results.keys(), key=lambda x: int(x)):
     val_loss.append(data["loss_val"])
     test_loss.append(data["loss_test"])
 
-# Plot: Accuracy
+# Plot: Accuracy and Loss
 plt.figure()
 # plt.plot(rounds, train_acc, label="Train Accuracy")
 plt.plot(rounds, val_acc, label="Validation Accuracy")
 plt.plot(rounds, test_acc, label="Test Accuracy")
-plt.xlabel("Round")
-plt.ylabel("Accuracy")
-plt.title("Global Evaluation (Accuracy)")
-plt.ylim(0,1)
-plt.xticks(np.arange(1,6,1))
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{output_dir}/accuracy_over_rounds.png")
-plt.close()
-
-# Plot: Loss
-plt.figure()
-# plt.plot(rounds, train_loss, label="Train Loss")
 plt.plot(rounds, val_loss, label="Validation Loss")
 plt.plot(rounds, test_loss, label="Test Loss")
+plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
 plt.xlabel("Round")
-plt.ylabel("Loss")
-plt.title("Global Evaluation (Loss)")
-plt.legend()
+plt.ylabel("Metrics")
+plt.title("Global Evaluation")
 plt.xticks(np.arange(1,6,1))
+plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig(f"{output_dir}/loss_over_rounds.png")
+plt.savefig(f"{output_dir}/metrics_over_rounds.png")
 plt.close()
+
 
 print(f"Gráficos guardados en: {output_dir}/")

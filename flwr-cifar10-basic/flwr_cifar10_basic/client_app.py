@@ -79,7 +79,7 @@ class FlowerClient(NumPyClient):
         scheduler = CosineAnnealingWithRestarts(
             eta_max=0.05,
             eta_min=0.0005,
-            T_0=63,
+            T_0=20,
             T_mul=1
         )
         lr_logger = LRSchedulerLogger()
@@ -106,27 +106,16 @@ class FlowerClient(NumPyClient):
         plt.figure()
         plt.plot(smooth_curve(H.history["accuracy"], factor=0.5), label="Train Accuracy")
         plt.plot(smooth_curve(H.history["val_accuracy"], factor=0.55), label="Validation Accuracy")
-        plt.title(f"Client {self.partition_id} - Accuracy (Round {actual_round})")
-        plt.xlabel("Epoch")
-        plt.ylabel("Accuracy")
-        plt.ylim(0, 1)
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(f"{plot_dir}/accuracy_round_{actual_round}.png")
-        plt.close()
-
-        # Gráfico de pérdida (loss)
-        plt.figure()
         plt.plot(smooth_curve(H.history["loss"], factor=0.5), label="Train Loss")
         plt.plot(smooth_curve(H.history["val_loss"], factor=0.55), label="Validation Loss")
-        plt.title(f"Client {self.partition_id} - Loss (Round {actual_round})")
+        plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
+        plt.title(f"Client {self.partition_id} - Metrics (Round {actual_round})")
         plt.xlabel("Epoch")
-        plt.ylabel("Loss")
+        plt.ylabel("Metrics")
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f"{plot_dir}/loss_round_{actual_round}.png")
+        plt.savefig(f"{plot_dir}/metrics_round_{actual_round}.png")
         plt.close()
 
         # Grafico Learning Rate

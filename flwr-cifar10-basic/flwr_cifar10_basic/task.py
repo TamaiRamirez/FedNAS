@@ -185,13 +185,13 @@ def load_data(partition_id, num_partitions):
     print("Number of images in dataset (Test):", images["test"].shape[0])
     
 
-    print("-" * 80)
-    print("Label distribution:")
-    for split in ["train", "valid", "test"]:
-        label_counts = Counter(labels[split])
-        print(f"{split.upper()} set class distribution:")
-        for cls in sorted(label_counts):
-            print(f"  Class {cls}: {label_counts[cls]} samples")
-        print("-" * 40)
-    print("-" * 80)
+    # print("-" * 80)
+    # print("Label distribution:")
+    # for split in ["train", "valid", "test"]:
+    #     label_counts = Counter(labels[split])
+    #     print(f"{split.upper()} set class distribution:")
+    #     for cls in sorted(label_counts):
+    #         print(f"  Class {cls}: {label_counts[cls]} samples")
+    #     print("-" * 40)
+    # print("-" * 80)
     return images, labels
