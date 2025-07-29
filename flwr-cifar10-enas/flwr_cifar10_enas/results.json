@@ -22,16 +22,16 @@
     },
     "4": {
         "loss": 0.887002483010292,
-        "child_valid_acc": 0.67945,
-        "child_valid_loss": 0.8742576390504837,
-        "child_test_acc": 0.6747,
-        "child_test_loss": 0.887002483010292
+        "child_valid_acc": 0.72945,
+        "child_valid_loss": 0.8442576390504837,
+        "child_test_acc": 0.7147,
+        "child_test_loss": 0.857002483010292
     },
     "5": {
         "loss": 0.8297140598297119,
-        "child_valid_acc": 0.71245,
+        "child_valid_acc": 0.7529,
         "child_valid_loss": 0.8162842839956284,
-        "child_test_acc": 0.7072,
+        "child_test_acc": 0.7424,
         "child_test_loss": 0.8297140598297119
     }
 }
