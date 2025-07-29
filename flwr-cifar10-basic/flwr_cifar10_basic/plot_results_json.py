@@ -2,7 +2,7 @@ import json
 import matplotlib.pyplot as plt
 import os
 import numpy as np
-MODEL = 'vgg19'
+MODEL = 'lenet'
 
 # Ruta al archivo
 results_path = f"/workspace/flwr-cifar10-basic/flwr_cifar10_basic/results_{MODEL}.json"
