@@ -26,7 +26,8 @@ from flwr_cifar10_enas.src.cifar10.macro_controller import MacroController
 from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild
 from sklearn.model_selection import train_test_split
 from collections import Counter
-
+import tensorflow as tf
+import pickle
 import matplotlib.pyplot as plt
 
 # from src.cifar10.micro_controller import MicroController
@@ -57,6 +58,60 @@ def smooth_curve(points, factor=0.8):
         else:
             smoothed_points.append(point)
     return smoothed_points
+
+# Functions for controller
+def save_controller_weights(variables, filepath):
+    """
+    Save tf.Variables as a list of (name, numpy_array) tuples using pickle.
+    """
+    weights = [(v.name, v.numpy()) for v in variables]
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'wb') as f:
+        pickle.dump(weights, f)
+    # print(f"[SAVE] Controller weights saved with names to: {filepath}")
+
+def load_controller_weights(filepath):
+    """
+    Load a list of (name, numpy_array) tuples and restore as tf.Variables with names.
+    """
+    with open(filepath, 'rb') as f:
+        weights = pickle.load(f)
+
+    return [tf.Variable(array, name=name, trainable=True) for name, array in weights]
+
+# Functions for child architectures
+def weights_to_ndarrays(data_dict, keys):
+    """
+    Takes a dictionary with keys and array-like values,
+    returns a tuple of:
+    - A NumPy ndarray stacking all array values
+    - A list of keys in the same order as the arrays
+    """
+    arrays = [data_dict[key] for key in keys]
+    
+    try:
+        stacked_array = np.stack(arrays)
+    except ValueError:
+        # Fall back to np.array if shapes don't match
+        stacked_array = np.array(arrays, dtype=object)
+
+    return arrays
+
+import numpy as np
+
+def ndarray_to_weights(array_data, keys):
+    """
+    Takes a NumPy array (or list of arrays) and a list of keys,
+    returns a dictionary mapping keys to their corresponding arrays.
+    """
+    if len(array_data) != len(keys):
+        raise ValueError("Length of array_data and keys must be the same.")
+    
+    # Ensure array_data is a list of arrays
+    array_data = np.asarray(array_data, dtype=object)
+
+    return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
+
 
 def load_data(partition_id, num_partitions):
     # Download and partition dataset
@@ -120,38 +175,6 @@ def load_data(partition_id, num_partitions):
     # print("-" * 80)
     return {"images": images, "labels": labels}
 
-def weights_to_ndarrays(data_dict, keys):
-    """
-    Takes a dictionary with keys and array-like values,
-    returns a tuple of:
-    - A NumPy ndarray stacking all array values
-    - A list of keys in the same order as the arrays
-    """
-    arrays = [data_dict[key] for key in keys]
-    
-    # try:
-    #     stacked_array = np.stack(arrays)
-    # except ValueError:
-    #     # Fall back to np.array if shapes don't match
-    #     stacked_array = np.array(arrays, dtype=object)
-
-    return arrays
-
-import numpy as np
-
-def ndarray_to_weights(array_data, keys):
-    """
-    Takes a NumPy array (or list of arrays) and a list of keys,
-    returns a dictionary mapping keys to their corresponding arrays.
-    """
-    if len(array_data) != len(keys):
-        raise ValueError("Length of array_data and keys must be the same.")
-    
-    # Ensure array_data is a list of arrays
-    array_data = np.asarray(array_data, dtype=object)
-
-    return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
-
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "data/cifar10", "")
@@ -164,7 +187,7 @@ DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
-DEFINE_integer("num_epochs", 62, "How many epochs to train")
+DEFINE_integer("num_epochs", 20, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
@@ -390,11 +413,11 @@ class Trainer:
                 print("-" * 80)
                 if FLAGS.controller_training and epoch % FLAGS.controller_train_every == 0:
                     print(f"Epoch {epoch}: Training controller")
-                    # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
-                    # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                    images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                     for ct_step in range(FLAGS.controller_train_steps * FLAGS.controller_num_aggregate):
-                        images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
-                        child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                        # images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                        # child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                         controller_valid_acc = self.ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
                         controller_loss, gn = self.controller_train_op(child_valid_rl_logits, labels_batch)
                         controller_entropy = 0
