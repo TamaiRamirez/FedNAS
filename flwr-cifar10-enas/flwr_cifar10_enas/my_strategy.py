@@ -1,145 +1,88 @@
-from typing import Union, Dict, List, Optional, Tuple
+from flwr.common import FitRes, Parameters, parameters_to_ndarrays
+from flwr.server.client_proxy import ClientProxy, EvaluateRes
+from flwr.server.strategy import FedAvg
+import json
+from datetime import datetime
+from datetime import timedelta
+import shutil
 
-from flwr.common import (
-    EvaluateIns,
-    EvaluateRes,
-    FitIns,
-    FitRes,
-    Parameters,
-    Scalar,
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-)
-from flwr.server.client_manager import ClientManager
-from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
-from flwr.server.strategy import Strategy
+from .task import PROJECT_PATH
+import tensorflow as tf  # Asegúrate de importar TensorFlow
+import os
+import time
 
-class FedCustom(Strategy):
-    def __init__(
-        self,
-        fraction_fit: float = 1.0,
-        fraction_evaluate: float = 1.0,
-        min_fit_clients: int = 2,
-        min_evaluate_clients: int = 2,
-        min_available_clients: int = 2,
-    ) -> None:
-        super().__init__()
-        self.fraction_fit = fraction_fit
-        self.fraction_evaluate = fraction_evaluate
-        self.min_fit_clients = min_fit_clients
-        self.min_evaluate_clients = min_evaluate_clients
-        self.min_available_clients = min_available_clients
+class CustomFedAvg(FedAvg):
+    """A strategy that keeps the core functionality of FedAvg unchanged but enables
+    additional features such as: Saving global checkpoints, saving metrics to the local
+    file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
+    """
 
-    def __repr__(self) -> str:
-        return "FedCustom"
+    def __init__(self, num_rounds, initial_parameters=None, *args, **kwargs):
+        super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
-        """Initialize global model parameters."""
-        # net = Net()
-        # ndarrays = get_parameters(net)
-        # return ndarrays_to_parameters(ndarrays)
-        return None
-
-    def configure_fit(
-        self, server_round: int, parameters: Parameters, client_manager: ClientManager
-    ) -> List[Tuple[ClientProxy, FitIns]]:
-        """Configure the next round of training."""
-
-        # Sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
-
-        # Create custom configs
-        n_clients = len(clients)
-        half_clients = n_clients // 2
-        standard_config = {"lr": 0.001}
-        higher_lr_config = {"lr": 0.003}
-        fit_configurations = []
-        for idx, client in enumerate(clients):
-            if idx < half_clients:
-                fit_configurations.append((client, FitIns(parameters, standard_config)))
-            else:
-                fit_configurations.append(
-                    (client, FitIns(parameters, higher_lr_config))
-                )
-        return fit_configurations
+        # Dictionary to store metrics
+        self.results_to_save = {}
+        self.start_time = time.time()
+        self.num_rounds = num_rounds
 
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
-        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate fit results using weighted average."""
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
-        parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
-        metrics_aggregated = {}
+        results: list[tuple[ClientProxy, FitRes]],
+        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
+        """Aggregate received model updates and save global model checkpoint."""
+        
+        parameters_aggregated, metrics_aggregated = super().aggregate_fit(
+            server_round, results, failures
+        )
+        
         return parameters_aggregated, metrics_aggregated
-
-    def configure_evaluate(
-        self, server_round: int, parameters: Parameters, client_manager: ClientManager
-    ) -> List[Tuple[ClientProxy, EvaluateIns]]:
-        """Configure the next round of evaluation."""
-        if self.fraction_evaluate == 0.0:
-            return []
-        config = {}
-        evaluate_ins = EvaluateIns(parameters, config)
-
-        # Sample clients
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
-
-        # Return client/config pairs
-        return [(client, evaluate_ins) for client in clients]
 
     def aggregate_evaluate(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, EvaluateRes]],
-        failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
-    ) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        """Aggregate evaluation losses using weighted average."""
+        results: list[tuple[ClientProxy, EvaluateRes]],
+        failures: list[BaseException],
+    ) -> tuple[float, dict[str, float]]:
 
         if not results:
+            print(f"[Round {server_round}] No evaluation results received.")
             return None, {}
 
-        loss_aggregated = weighted_loss_avg(
-            [
-                (evaluate_res.num_examples, evaluate_res.loss)
-                for _, evaluate_res in results
-            ]
-        )
-        metrics_aggregated = {}
-        return loss_aggregated, metrics_aggregated
+        total_examples = sum(res.num_examples for _, res in results)
+        
+        # Inicializar acumuladores
+        loss_total = 0.0
+        metrics_accum = {}
 
-    def evaluate(
-        self, server_round: int, parameters: Parameters
-    ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
-        """Evaluate global model parameters using an evaluation function."""
+        for _, res in results:
+            weight = res.num_examples / total_examples
+            loss_total += res.loss * weight
 
-        # Let's assume we won't perform the global model evaluation on the server side.
-        return None
+            for key, value in res.metrics.items():
+                if key not in metrics_accum:
+                    metrics_accum[key] = 0.0
+                metrics_accum[key] += value * weight
 
-    def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Return sample size and required number of clients."""
-        num_clients = int(num_available_clients * self.fraction_fit)
-        return max(num_clients, self.min_fit_clients), self.min_available_clients
+        # Guardar resultados para esta ronda
+        round_results = {"loss": loss_total, **metrics_accum}
+        self.results_to_save[server_round] = round_results
 
-    def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Use a fraction of available clients for evaluation."""
-        num_clients = int(num_available_clients * self.fraction_evaluate)
-        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
+        # Guardar en JSON
+        with open(f"{PROJECT_PATH}/results.json", "w") as f:
+            json.dump(self.results_to_save, f, indent=4)
+
+        # Mostrar en consola
+        print(f"[Round {server_round}] Aggregated Metrics:")
+        for k, v in round_results.items():
+            print(f"  {k}: {v:.4f}")
+
+        if server_round == self.num_rounds:  # última ronda
+            elapsed = time.time() - self.start_time
+            elapsed_td = timedelta(seconds=int(elapsed))
+            with open(f"{PROJECT_PATH}/Training_time.txt", 'w', encoding='utf-8') as archivo:
+                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
+            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+
+        return loss_total, metrics_accum

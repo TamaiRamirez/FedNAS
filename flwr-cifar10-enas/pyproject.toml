@@ -24,16 +24,17 @@ serverapp = "flwr_cifar10_enas.server_app:app"
 clientapp = "flwr_cifar10_enas.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 2
+num-server-rounds = 5
 local-epochs = 50
 batch-size = 128
 verbose = true
+project-path = "/workspace/flwr-cifar10-enas/flwr_cifar10_enas"
 
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 2
+options.num-supernodes = 4
 
 [tool.flwr.federations.local-deployment]
 address = "127.0.0.1:9093"

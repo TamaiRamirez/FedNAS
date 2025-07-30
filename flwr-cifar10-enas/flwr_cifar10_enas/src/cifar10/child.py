@@ -17,14 +17,14 @@ DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")
 DEFINE_float("child_l2_reg", 0.00025, "")
-DEFINE_float("child_lr", 0.1, "")
+DEFINE_float("child_lr", 0.05, "")
 DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_boolean("child_lr_cosine", True, "Use cosine lr schedule")
 DEFINE_float("child_lr_dec_rate", 0.1, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
 DEFINE_float("child_lr_min", 0.0005, "for lr schedule")
-DEFINE_integer("child_lr_T_0", 10, "for lr schedule")
-DEFINE_integer("child_lr_T_mul", 2, "for lr schedule")
+DEFINE_integer("child_lr_T_0", 21, "for lr schedule")
+DEFINE_integer("child_lr_T_mul", 1, "for lr schedule")
 DEFINE_integer("child_num_aggregate", None, "")
 DEFINE_integer("child_num_replicas", 1, "")
 DEFINE_integer("child_out_filters", 36, "")
@@ -256,47 +256,110 @@ class Child(object):
     self.images = images
     self.labels = labels
 
-  def eval_once(self, eval_set, logits, labels, verbose=False):
-    """Expects self.acc and self.global_step to be defined.
+  # def eval_once(self, eval_set, logits, labels, verbose=False):
+  #   """Expects self.acc and self.global_step to be defined.
+
+  #   Args:
+  #     sess: fw.Session() or one of its wrap arounds.
+  #     feed_dict: can be used to give more information to sess.run().
+  #     eval_set: "valid" or "test"
+  #   """
+
+  #   assert self.global_step is not None
+  #   global_step = self.global_step
+  #   print("Eval at {}".format(global_step.value()))
+
+  #   if eval_set == "valid":
+  #     assert self.dataset_valid is not None
+  #     assert self.valid_acc is not None
+  #     num_examples = self.num_valid_examples
+  #     num_batches = self.num_valid_batches
+  #     acc_op = self.valid_acc
+  #   elif eval_set == "test":
+  #     assert self.test_acc is not None
+  #     num_examples = self.num_test_examples
+  #     num_batches = self.num_test_batches
+  #     acc_op = self.test_acc
+  #   else:
+  #     raise NotImplementedError("Unknown eval_set '{}'".format(eval_set))
+
+  #   total_acc = 0
+  #   total_exp = 0
+  #   for batch_id in range(num_batches):
+  #     acc = acc_op(logits, labels)
+  #     # print(f"ACC: {acc}")
+  #     total_acc += acc
+  #     total_exp += self.eval_batch_size
+  #     if verbose:
+  #       sys.stdout.write("\r{:<5d}/{:>5d}".format(total_acc, total_exp))
+  #   if verbose:
+  #     print("")
+  #   print("{}_accuracy: {:<6.4f}".format(
+  #     eval_set, float(total_acc) / total_exp))
+  #   return float(total_acc) / total_exp
+
+  def eval_once(self, eval_set, model, verbose=False):
+    """
+    Evalúa el modelo en todo el dataset de validación o test, calculando
+    precisión y pérdida promedio.
 
     Args:
-      sess: fw.Session() or one of its wrap arounds.
-      feed_dict: can be used to give more information to sess.run().
-      eval_set: "valid" or "test"
+        eval_set: "valid" o "test"
+        model: función o modelo que recibe imágenes y devuelve logits
+        verbose: si se desea imprimir progreso
+
+    Returns:
+        Tuple: (accuracy_promedio, loss_promedio)
     """
 
     assert self.global_step is not None
     global_step = self.global_step
-    print("Eval at {}".format(global_step.value()))
+    print("Eval at step {}".format(global_step.value()))
 
     if eval_set == "valid":
-      assert self.dataset_valid is not None
-      assert self.valid_acc is not None
-      num_examples = self.num_valid_examples
-      num_batches = self.num_valid_batches
+      dataset = self.dataset_valid
       acc_op = self.valid_acc
     elif eval_set == "test":
-      assert self.test_acc is not None
-      num_examples = self.num_test_examples
-      num_batches = self.num_test_batches
+      dataset = self.dataset_test
       acc_op = self.test_acc
     else:
       raise NotImplementedError("Unknown eval_set '{}'".format(eval_set))
 
-    total_acc = 0
+    dataset_np = dataset.as_numpy_iterator()
+
+    total_acc = 0.0
+    total_loss = 0.0
     total_exp = 0
-    for batch_id in range(num_batches):
-      acc = acc_op(logits, labels)
-      # print(f"ACC: {acc}")
-      total_acc += acc
-      total_exp += self.eval_batch_size
+
+    for batch_id, (images_batch, labels_batch) in enumerate(dataset_np):
+      logits = model(images_batch)
+
+      # Accuracy acumulada
+      acc = acc_op(logits, labels_batch)
+      batch_size = len(labels_batch)
+      total_acc += float(acc)
+
+      # Loss acumulada correctamente
+      loss_per_sample = fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels_batch)
+      batch_loss = fw.reduce_sum(loss_per_sample)
+      total_loss += batch_loss
+
+      total_exp += batch_size
+
       if verbose:
-        sys.stdout.write("\r{:<5d}/{:>5d}".format(total_acc, total_exp))
+        sys.stdout.write(f"\r{total_exp} samples processed...")
+
     if verbose:
       print("")
-    print("{}_accuracy: {:<6.4f}".format(
-      eval_set, float(total_acc) / total_exp))
-    return float(total_acc) / total_exp
+
+    avg_acc = total_acc / total_exp
+    avg_loss = total_loss / total_exp
+
+    print(f"{eval_set}_accuracy: {avg_acc:.4f}")
+    print(f"{eval_set}_loss: {avg_loss:.4f}")
+
+    return avg_acc, avg_loss
+
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")
 
