@@ -23,26 +23,6 @@ This repository contains the code and documentation for the paper:
 
 ---
 
-## 📦 Project Structure
-
-```
-fed-enas/
-├── architecture/
-│   └── controller.py       # LSTM-based architecture controller
-├── federated/
-│   ├── client.py           # FedAvg-compatible client with ENAS integration
-│   └── server.py           # Custom server for heterogeneous aggregation
-├── models/
-│   └── supernet.py         # Macro-level ENAS search space
-├── utils/
-│   └── data_loader.py      # CIFAR-10 partitioning and augmentation
-├── run_fedenas.py          # Launcher for training simulation
-├── requirements.txt
-└── README.md
-```
-
----
-
 ## 🧪 Experimental Setup
 
 ### Dataset
