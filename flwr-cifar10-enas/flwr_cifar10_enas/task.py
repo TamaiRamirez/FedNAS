@@ -78,7 +78,7 @@ def load_controller_weights(filepath):
         weights = pickle.load(f)
 
     return [tf.Variable(array, name=name, trainable=True) for name, array in weights]
-
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 # Functions for child architectures
 def weights_to_ndarrays(data_dict, keys):
     """

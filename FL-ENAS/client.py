@@ -51,7 +51,7 @@ class Client:
             dataset["labels"][key] = [dataset["labels"][key][i] for i in indices]
     
         return dataset
-        
+    """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
     def start(self):
         # Start the client socket
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

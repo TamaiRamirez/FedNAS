@@ -47,7 +47,7 @@ from functools import lru_cache
 #         return result
 #     return wrapper
 
-
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "data/cifar10", "")
 DEFINE_string("output_dir", "outputs", "")

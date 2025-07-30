@@ -99,7 +99,7 @@ class Server:
                 print()
  
         self.close_connections()
-
+    """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
     def weights_aggregate(self, results, method="best_model"):
         if method == "best_model":
             best_model={}

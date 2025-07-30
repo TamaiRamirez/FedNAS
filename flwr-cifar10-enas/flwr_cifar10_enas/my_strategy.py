@@ -32,7 +32,7 @@ class CustomFedAvg(FedAvg):
         failures: list[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
-        
+        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
         parameters_aggregated, metrics_aggregated = super().aggregate_fit(
             server_round, results, failures
         )
