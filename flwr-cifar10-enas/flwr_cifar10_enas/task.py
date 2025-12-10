@@ -5,7 +5,7 @@ import os
 import keras
 from keras import layers
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 import numpy as np
 import shutil
 import sys
@@ -29,7 +29,7 @@ from collections import Counter
 import tensorflow as tf
 import pickle
 import matplotlib.pyplot as plt
-
+import json
 # from src.cifar10.micro_controller import MicroController
 # from src.cifar10.micro_child import MicroChild
 
@@ -43,11 +43,18 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 fds = None  # Cache FederatedDataset
 
+tf.random.set_seed(
+    42
+)
+
 toml_path = Path(__file__).parent.parent / "pyproject.toml"
 with toml_path.open("rb") as f:
     toml_config = tomli.load(f)
 PROJECT_PATH = toml_config["tool"]["flwr"]["app"]["config"]["project-path"]
-
+NON_IID = toml_config["tool"]["flwr"]["app"]["config"]["non_iid"]
+ALPHA = toml_config["tool"]["flwr"]["app"]["config"]["alpha"]
+DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
+DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
     smoothed_points = []
@@ -113,15 +120,18 @@ def ndarray_to_weights(array_data, keys):
     return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
 
 
-def load_data(partition_id, num_partitions):
+def load_data(partition_id, num_partitions, alpha=0.5):
     # Download and partition dataset
     # Only initialize `FederatedDataset` once
     global fds
     images, labels = {}, {}
     if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
+        if NON_IID:
+            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=alpha, partition_by="label")
+        else:
+            partitioner = IidPartitioner(num_partitions=num_partitions)
         fds = FederatedDataset(
-            dataset="uoft-cs/cifar10",
+            dataset=DATASET,
             partitioners={"train": partitioner},
         )
         
@@ -165,14 +175,29 @@ def load_data(partition_id, num_partitions):
     print("Number of images in dataset (Test):", images["test"].shape[0])
     
     print("-" * 80)
-    # print("Label distribution:")
-    # for split in ["train", "valid", "test"]:
-    #     label_counts = Counter(labels[split])
-    #     print(f"{split.upper()} set class distribution:")
-    #     for cls in sorted(label_counts):
-    #         print(f"  Class {cls}: {label_counts[cls]} samples")
-    #     print("-" * 40)
-    # print("-" * 80)
+    print("Label distribution:")
+    label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
+    for split in ["train", "valid", "test"]:
+        label_counts = Counter(labels[split])
+        print(f"{split.upper()} set class distribution:")
+        for label in sorted(label_counts):
+            print(f"  Class {label}: {label_counts[label]} samples")
+            label_dist[split].append({str(label): label_counts[label]})
+        print("-" * 40)
+    print("-" * 80)
+
+    if NON_IID:
+        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
+        # Create directories if they do not exist
+        os.makedirs(save_path, exist_ok=True)
+        with open(f"{save_path}/class_dist.json", "w") as f:
+            json.dump(label_dist, f, indent=4)
+    else:
+        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{partition_id}_data"
+        # Create directories if they do not exist
+        os.makedirs(save_path, exist_ok=True)
+        with open(f"{save_path}/class_dist.json", "w") as f:
+            json.dump(label_dist, f, indent=4)
     return {"images": images, "labels": labels}
 
 
@@ -445,51 +470,58 @@ class Trainer:
                 print("Test Accuracy: ")
                 child_test_acc, child_test_loss = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
 
-                # Directorio de guardado
-                plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
-                os.makedirs(plot_dir, exist_ok=True)
+                # # Directorio de guardado
+                # plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
+                # os.makedirs(plot_dir, exist_ok=True)
                 
-                # Gráfico de precisión (accuracy)
-                plt.figure()
-                plt.plot(smooth_curve(child_train_accuracies), label="Child Train Accuracy")
-                plt.plot(smooth_curve(child_valid_accuracies), label="Child Validation Accuracy")
-                plt.plot(smooth_curve(child_train_losses), label="Child Train Loss")
-                plt.plot(smooth_curve(child_valid_losses), label="Child Validation Loss")
-                # Línea horizontal punteada en y=1
-                plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
-                plt.xlabel("Epoch")
-                plt.ylabel("Accuracy")
-                # plt.ylim(0, 2)
-                plt.legend()
-                plt.grid(True)
-                plt.tight_layout()
-                plt.savefig(f"{plot_dir}/child_metrics.png")
-                plt.close()
+                # # Gráfico de precisión (accuracy)
+                # plt.figure()
+                # plt.plot(smooth_curve(child_train_accuracies), label="Child Train Accuracy")
+                # plt.plot(smooth_curve(child_valid_accuracies), label="Child Validation Accuracy")
+                # plt.plot(smooth_curve(child_train_losses), label="Child Train Loss")
+                # plt.plot(smooth_curve(child_valid_losses), label="Child Validation Loss")
+                # # Línea horizontal punteada en y=1
+                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
+                # plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
+                # plt.xlabel("Epoch")
+                # plt.ylabel("Accuracy")
+                # # plt.ylim(0, 2)
+                # plt.legend()
+                # plt.grid(True)
+                # plt.tight_layout()
+                # plt.savefig(f"{plot_dir}/child_metrics.png")
+                # plt.close()
                 
-                # Gráfico de precisión (accuracy)
-                plt.figure()
-                plt.plot(smooth_curve(controller_accuracies), label="Controller Accuracy")
-                plt.plot(smooth_curve(controller_losses), label="Controller Loss")
-                # Línea horizontal punteada en y=1
-                plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
-                plt.xlabel("Epoch")
-                plt.ylabel("Accuracy")
-                # plt.ylim(0, 2)
-                plt.legend()
-                plt.grid(True)
-                plt.tight_layout()
-                plt.savefig(f"{plot_dir}/controller_metrics.png")
-                plt.close()
+                # # Gráfico de precisión (accuracy)
+                # plt.figure()
+                # plt.plot(smooth_curve(controller_accuracies), label="Controller Accuracy")
+                # plt.plot(smooth_curve(controller_losses), label="Controller Loss")
+                # # Línea horizontal punteada en y=1
+                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
+                # plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
+                # plt.xlabel("Epoch")
+                # plt.ylabel("Accuracy")
+                # # plt.ylim(0, 2)
+                # plt.legend()
+                # plt.grid(True)
+                # plt.tight_layout()
+                # plt.savefig(f"{plot_dir}/controller_metrics.png")
+                # plt.close()
                 
                 break
 
         return {
+                "child_train_accuracies": child_train_accuracies,
+                "child_valid_accuracies": child_valid_accuracies,
+                "child_train_losses": child_train_losses,
+                "child_valid_losses": child_valid_losses,
+                "controller_accuracies": controller_accuracies,
+                "controller_losses": controller_losses,
                 "child_valid_acc": float(child_valid_acc),
                 "child_valid_loss": float(child_valid_loss),
                 "child_test_acc": float(child_test_acc),
                 "child_test_loss": float(child_test_loss),
                 "child_weights": self.ops["child"]["weights"],
+                "child_trainable_variables": self.ops['child']['trainable_variables'],
                 "controller_trainable_variables": self.ops["controller"]["trainable_variables"]
                 }
