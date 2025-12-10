@@ -3,7 +3,7 @@
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
 
-from flwr_cifar10_enas.task import PROJECT_PATH, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
+from flwr_cifar10_enas.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
 import copy
 
 # Define Flower Client and client_fn
@@ -28,6 +28,11 @@ class FlowerClient(NumPyClient):
     def fit(self, parameters, config):
         actual_round = config["round"]
         client_info = self.client_state.config_records["client_info"] # Charge context
+        # Directorio de guardado
+        if NON_IID:
+            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{self.partition_id}_data"
+        else:
+            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{self.partition_id}_data"
 
         # After the first round we have to use the generic model for 12 classes 
         if client_info["first_train"]:
@@ -37,7 +42,7 @@ class FlowerClient(NumPyClient):
         else:
             child_keys = client_info.get("child_weights_keys", None)
             child_weights = ndarray_to_weights(parameters, child_keys)
-            controller_weights = load_controller_weights(f"{PROJECT_PATH}/client_{self.partition_id}_controller_weights.pkl")
+            controller_weights = load_controller_weights(f"{save_path}/controller_weights.pkl")
             transfer = True
         trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": controller_weights}, transfer, actual_round, self.partition_id)
         result = trainer.train()
@@ -50,11 +55,24 @@ class FlowerClient(NumPyClient):
         client_info["last_valid_loss"] = result["child_valid_loss"]
         client_info["last_test_loss"] = result["child_test_loss"]
         client_info["child_weights_keys"] = child_keys
-        save_controller_weights(result["controller_trainable_variables"], f"{PROJECT_PATH}/client_{self.partition_id}_controller_weights.pkl")
+        save_controller_weights(result["controller_trainable_variables"], f"{save_path}/controller_weights.pkl")
 
         # print(f"[FIT] child_valid_acc={result["child_valid_acc"]}, child_test_acc={result["child_test_acc"]}")
 
         client_info["first_train"] = False
+
+        results_client = {
+            "train_accuracy": result["child_train_accuracies"],
+            "val_accuracy": result["child_valid_accuracies"],
+            "train_loss": H.history["child_train_losses"],
+            "val_loss": H.history["child_valid_losses"],
+            "communication_cost": 2 * len(result["child_trainable_variables"]) * 4 / (1024 * 1024),
+            "size_model": len(result["child_trainable_variables"]) * 4 / (1024 * 1024)
+        }
+
+        with open(f"{save_path}/results_client_{self.partition_id}_{actual_round}.json", "w") as f:
+            json.dump(results_client, f, indent=4)
+
         return model_weights, len(model_weights), {}
     
     def evaluate(self, parameters, config):
@@ -69,15 +87,14 @@ class FlowerClient(NumPyClient):
             "child_valid_loss": valid_loss,
             "child_test_acc": test_acc,
             "child_test_loss": test_loss
-
         }
 
 def client_fn(context: Context):
 
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    #data = load_data(partition_id, num_partitions)
-    data = load_data(0, 1) # No partitions
+    data = load_data(partition_id, num_partitions, alpha=ALPHA)
+    # data = load_data(0, 1) # No partitions
     epochs = context.run_config["local-epochs"]
     batch_size = context.run_config["batch-size"]
     verbose = context.run_config.get("verbose")

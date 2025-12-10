@@ -6,10 +6,11 @@ from datetime import datetime
 from datetime import timedelta
 import shutil
 
-from .task import PROJECT_PATH
+from .task import PROJECT_PATH, NON_IID, ALPHA
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
+import numpy as np
 
 class CustomFedAvg(FedAvg):
     """A strategy that keeps the core functionality of FedAvg unchanged but enables
@@ -55,7 +56,7 @@ class CustomFedAvg(FedAvg):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-
+        test_accuracies = []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -64,13 +65,22 @@ class CustomFedAvg(FedAvg):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
+                if key=="test_accuracy":
+                    test_accuracies.append(value * weight)
+
+        CV = np.std(test_accuracies)/np.mean(test_accuracies) # coeficiente de variación (CV)
 
         # Guardar resultados para esta ronda
-        round_results = {"loss": loss_total, **metrics_accum}
+        round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
         self.results_to_save[server_round] = round_results
+        # Directorio de guardado
+        if NON_IID:
+            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}"
+        else:
+            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID"
 
         # Guardar en JSON
-        with open(f"{PROJECT_PATH}/results.json", "w") as f:
+        with open(f"{save_path}/results_global.json", "w") as f:
             json.dump(self.results_to_save, f, indent=4)
 
         # Mostrar en consola
@@ -81,7 +91,7 @@ class CustomFedAvg(FedAvg):
         if server_round == self.num_rounds:  # última ronda
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
-            with open(f"{PROJECT_PATH}/Training_time.txt", 'w', encoding='utf-8') as archivo:
+            with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
                 archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
