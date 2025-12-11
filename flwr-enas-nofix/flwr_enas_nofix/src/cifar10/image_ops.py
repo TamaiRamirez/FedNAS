@@ -1,6 +1,6 @@
 import numpy as np
-import flwr_cifar10_enas.src.framework as fw
-from flwr_cifar10_enas.src.utils import LayeredModel
+import flwr_enas_nofix.src.framework as fw
+from flwr_enas_nofix.src.utils import LayeredModel
 from tensorflow.python.training import moving_averages
 
 

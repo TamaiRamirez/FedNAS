@@ -1,4 +1,4 @@
-"""flwr-cifar10-enas: A Flower / TensorFlow app."""
+"""flwr-enas-nofix: A Flower / TensorFlow app."""
 
 import os
 
@@ -13,17 +13,17 @@ import sys
 import time
 from datetime import datetime
 from absl import flags, app
-import flwr_cifar10_enas.src.framework as fw
-from flwr_cifar10_enas.src import utils
-from flwr_cifar10_enas.src.utils import Logger
-from flwr_cifar10_enas.src.utils import DEFINE_boolean
-from flwr_cifar10_enas.src.utils import DEFINE_integer
-from flwr_cifar10_enas.src.utils import DEFINE_string
-from flwr_cifar10_enas.src.utils import print_user_flags
+import flwr_enas_nofix.src.framework as fw
+from flwr_enas_nofix.src import utils
+from flwr_enas_nofix.src.utils import Logger
+from flwr_enas_nofix.src.utils import DEFINE_boolean
+from flwr_enas_nofix.src.utils import DEFINE_integer
+from flwr_enas_nofix.src.utils import DEFINE_string
+from flwr_enas_nofix.src.utils import print_user_flags
 
-from flwr_cifar10_enas.src.cifar10.data_utils import read_data
-from flwr_cifar10_enas.src.cifar10.macro_controller import MacroController
-from flwr_cifar10_enas.src.cifar10.macro_child import MacroChild
+from flwr_enas_nofix.src.cifar10.data_utils import read_data
+from flwr_enas_nofix.src.cifar10.macro_controller import MacroController
+from flwr_enas_nofix.src.cifar10.macro_child import MacroChild
 from sklearn.model_selection import train_test_split
 from collections import Counter
 import tensorflow as tf
@@ -55,7 +55,7 @@ NON_IID = toml_config["tool"]["flwr"]["app"]["config"]["non_iid"]
 ALPHA = toml_config["tool"]["flwr"]["app"]["config"]["alpha"]
 DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
 DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
-LOCAL_EPOCHS = DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
+LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
 
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float

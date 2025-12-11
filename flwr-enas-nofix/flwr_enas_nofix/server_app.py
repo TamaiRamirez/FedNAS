@@ -1,4 +1,4 @@
-"""flwr-cifar10-enas: A Flower / TensorFlow app."""
+"""flwr-enas-nofix: A Flower / TensorFlow app."""
 
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
