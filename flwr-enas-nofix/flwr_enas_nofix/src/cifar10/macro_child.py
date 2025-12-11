@@ -7,10 +7,10 @@ import sys
 import numpy as np
 from absl import flags
 flags.FLAGS(['test'])
-import flwr_cifar10_enas.src.framework as fw
-from flwr_cifar10_enas.src.cifar10.child import Child
-from flwr_cifar10_enas.src.cifar10.image_ops import BatchNorm, BatchNormWithMask
-from flwr_cifar10_enas.src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
+import flwr_enas_nofix.src.framework as fw
+from flwr_enas_nofix.src.cifar10.child import Child
+from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm, BatchNormWithMask
+from flwr_enas_nofix.src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
 
 import psutil
 import gc

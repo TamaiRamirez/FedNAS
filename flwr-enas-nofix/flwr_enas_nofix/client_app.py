@@ -1,10 +1,10 @@
-"""flwr-cifar10-enas: A Flower / TensorFlow app."""
+"""flwr-enas-nofix: A Flower / TensorFlow app."""
 
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
 import json
 
-from flwr_cifar10_enas.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
+from flwr_enas_nofix.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
 import copy
 
 # Define Flower Client and client_fn
@@ -35,6 +35,9 @@ class FlowerClient(NumPyClient):
         else:
             save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{self.partition_id}_data"
 
+        # print("*"*80)
+        # print(f"SAVE PATH: {save_path}, DATASET NAME: {DATASET_NAME}")
+        # print("*"*80)
         # After the first round we have to use the generic model for 12 classes 
         if client_info["first_train"]:
             child_weights = None
