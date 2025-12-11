@@ -2,6 +2,7 @@
 
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
+import json
 
 from flwr_cifar10_enas.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
 import copy
@@ -64,8 +65,8 @@ class FlowerClient(NumPyClient):
         results_client = {
             "train_accuracy": result["child_train_accuracies"],
             "val_accuracy": result["child_valid_accuracies"],
-            "train_loss": H.history["child_train_losses"],
-            "val_loss": H.history["child_valid_losses"],
+            "train_loss": result["child_train_losses"],
+            "val_loss": result["child_valid_losses"],
             "communication_cost": 2 * len(result["child_trainable_variables"]) * 4 / (1024 * 1024),
             "size_model": len(result["child_trainable_variables"]) * 4 / (1024 * 1024)
         }
