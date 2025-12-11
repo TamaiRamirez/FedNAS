@@ -38,7 +38,7 @@ dataset_name = "cifar10"
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 2
+options.num-supernodes = 4
 
 [tool.flwr.federations.local-deployment]
 address = "127.0.0.1:9093"

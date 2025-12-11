@@ -6,7 +6,7 @@ from datetime import datetime
 from datetime import timedelta
 import shutil
 
-from .task import PROJECT_PATH, NON_IID, ALPHA
+from .task import PROJECT_PATH, NON_IID, ALPHA, DATASET_NAME
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
@@ -65,7 +65,7 @@ class CustomFedAvg(FedAvg):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
-                if key=="test_accuracy":
+                if key=="child_test_acc":
                     test_accuracies.append(value * weight)
 
         CV = np.std(test_accuracies)/np.mean(test_accuracies) # coeficiente de variación (CV)

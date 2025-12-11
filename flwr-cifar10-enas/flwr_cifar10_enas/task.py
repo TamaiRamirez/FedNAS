@@ -55,6 +55,8 @@ NON_IID = toml_config["tool"]["flwr"]["app"]["config"]["non_iid"]
 ALPHA = toml_config["tool"]["flwr"]["app"]["config"]["alpha"]
 DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
 DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
+LOCAL_EPOCHS = DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
+
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
     smoothed_points = []
@@ -212,7 +214,7 @@ DEFINE_boolean("controller_training", True, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
-DEFINE_integer("num_epochs", 20, "How many epochs to train")
+DEFINE_integer("num_epochs", LOCAL_EPOCHS, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
 
 from memory_profiler import profile
