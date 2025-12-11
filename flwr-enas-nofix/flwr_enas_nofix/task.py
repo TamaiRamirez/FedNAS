@@ -88,6 +88,8 @@ def load_controller_weights(filepath):
 
     return [tf.Variable(array, name=name, trainable=True) for name, array in weights]
 """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
+
 # Functions for child architectures
 def weights_to_ndarrays(data_dict, keys):
     """
@@ -98,12 +100,11 @@ def weights_to_ndarrays(data_dict, keys):
     """
     arrays = [data_dict[key] for key in keys]
     
-    try:
-        stacked_array = np.stack(arrays)
-    except ValueError:
-        # Fall back to np.array if shapes don't match
-        stacked_array = np.array(arrays, dtype=object)
-
+    # try:
+    #     stacked_array = np.stack(arrays)
+    # except ValueError:
+    #     # Fall back to np.array if shapes don't match
+    #     stacked_array = np.array(arrays, dtype=object)
     return arrays
 
 import numpy as np

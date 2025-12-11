@@ -1,10 +1,13 @@
-from flwr.common import FitRes, Parameters, parameters_to_ndarrays
+from flwr.common import FitRes, Parameters, parameters_to_ndarrays, ndarrays_to_parameters, NDArrays
 from flwr.server.client_proxy import ClientProxy, EvaluateRes
 from flwr.server.strategy import FedAvg
+from functools import partial, reduce
+
 import json
 from datetime import datetime
 from datetime import timedelta
 import shutil
+
 
 from .task import PROJECT_PATH, NON_IID, ALPHA, DATASET_NAME
 import tensorflow as tf  # Asegúrate de importar TensorFlow
@@ -25,6 +28,23 @@ class CustomFedAvg(FedAvg):
         self.results_to_save = {}
         self.start_time = time.time()
         self.num_rounds = num_rounds
+        
+    def performance_aggregate(self, results: list[tuple[NDArrays, int]], total_acc) -> NDArrays:
+        """Compute performance weighted average."""
+        # Calculate the total number of examples used during training
+        num_examples_total = sum(num_examples for (_, num_examples, _) in results)
+
+        # Create a list of weights, each multiplied by the related number of examples
+        weighted_weights = [
+            [layer * num_examples * acc/total_acc for layer in weights] for weights, num_examples, acc in results
+        ]
+
+        # Compute average weights of each layer
+        weights_prime: NDArrays = [
+            reduce(np.add, layer_updates) / num_examples_total
+            for layer_updates in zip(*weighted_weights, strict=True)
+        ]
+        return weights_prime
 
     def aggregate_fit(
         self,
@@ -34,10 +54,38 @@ class CustomFedAvg(FedAvg):
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
         """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
-        parameters_aggregated, metrics_aggregated = super().aggregate_fit(
-            server_round, results, failures
-        )
+        # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
+        #     server_round, results, failures
+        # )
         
+        test_acc = []
+        for _, res in results:
+            test_acc.append(float(next(iter(res.metrics.values()))))
+        total_acc = max(test_acc)
+        
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
+
+        
+        # Convert results
+        weights_results = [
+            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, float(next(iter(res.metrics.values()))))
+            for _, fit_res in results
+        ]
+        aggregated_ndarrays = self.performance_aggregate(weights_results, total_acc)
+
+        parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        # if self.fit_metrics_aggregation_fn:
+        #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+        #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+
+
         return parameters_aggregated, metrics_aggregated
 
     def aggregate_evaluate(

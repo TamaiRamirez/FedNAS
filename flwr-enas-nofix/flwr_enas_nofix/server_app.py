@@ -1,12 +1,21 @@
 """flwr-enas-nofix: A Flower / TensorFlow app."""
 
-from flwr.common import Context, ndarrays_to_parameters
+from flwr.common import Context, ndarrays_to_parameters, Metrics
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from .my_strategy import CustomFedAvg
+from typing import List, Tuple
 
 def fit_config(rnd: int):
     return {"round": rnd}
+
+# def weighted_average (metrics: List[Tuple[int, Metrics]]) -> Metrics:
+#     """Function to weight aggregate the metrics based on num examples"""
+#     # Loop trough all metrics received compute accuracies x examples
+#     accuracies = [num_examples * m["child_valid_acc"] for num_examples, m in metrics]
+#     total_examples = sum(num_examples for num_examples, _ in metrics)
+#     # Return weighted average accuracy
+#     return {"weighted_val_accuracy": sum(accuracies) / total_examples}
 
 def server_fn(context: Context):
     # Read from config

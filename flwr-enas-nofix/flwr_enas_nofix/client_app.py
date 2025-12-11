@@ -77,7 +77,7 @@ class FlowerClient(NumPyClient):
         with open(f"{save_path}/results_client_{self.partition_id}_{actual_round}.json", "w") as f:
             json.dump(results_client, f, indent=4)
 
-        return model_weights, len(model_weights), {}
+        return model_weights, len(model_weights), {"test_accuracy": result["child_test_acc"]}
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]
