@@ -61,8 +61,7 @@ class CustomFedAvgPerformace(FedAvg):
         test_acc = []
         for _, res in results:
             test_acc.append(float(next(iter(res.metrics.values()))))
-        total_acc = max(test_acc)
-        
+        total_f1 = max(test_acc)
         if not results:
             return None, {}
         # Do not aggregate if there are failures and failures are not accepted
@@ -75,7 +74,7 @@ class CustomFedAvgPerformace(FedAvg):
             (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, float(next(iter(res.metrics.values()))))
             for _, fit_res in results
         ]
-        aggregated_ndarrays = self.performance_aggregate(weights_results, total_acc)
+        aggregated_ndarrays = self.performance_aggregate(weights_results, total_f1)
 
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
@@ -104,7 +103,7 @@ class CustomFedAvgPerformace(FedAvg):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        test_accuracies = []
+        test_f1 = []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -113,10 +112,10 @@ class CustomFedAvgPerformace(FedAvg):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
-                if key=="child_test_acc":
-                    test_accuracies.append(value * weight)
+                if key=="child_test_f1_score":
+                    test_f1.append(value * weight)
 
-        CV = np.std(test_accuracies)/np.mean(test_accuracies) # coeficiente de variación (CV)
+        CV = np.std(test_f1)/np.mean(test_f1) # coeficiente de variación (CV) F1 Score
 
         # Guardar resultados para esta ronda
         round_results = {"loss": loss_total, **metrics_accum, "CV": CV}

@@ -433,7 +433,7 @@ class Trainer:
                 # child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=False)
                 print(f"train_accuracy: {sum(child_train_accs)/len(child_train_accs)}")
                 print(f"train_loss: {sum(child_train_lss)/len(child_train_lss)}")
-                child_valid_acc, child_valid_loss = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
+                child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
                 
                 child_train_accuracies.append(sum(child_train_accs)/len(child_train_accs))
                 child_train_losses.append(sum(child_train_lss)/len(child_train_lss))
@@ -472,7 +472,7 @@ class Trainer:
 
             if epoch >= FLAGS.num_epochs:
                 print("Test Accuracy: ")
-                child_test_acc, child_test_loss = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
+                child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
 
                 # # Directorio de guardado
                 # plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
@@ -525,6 +525,7 @@ class Trainer:
                 "child_valid_loss": float(child_valid_loss),
                 "child_test_acc": float(child_test_acc),
                 "child_test_loss": float(child_test_loss),
+                "child_test_f1_score": float(child_test_f1_score),
                 "child_weights": self.ops["child"]["weights"],
                 "child_trainable_variables": self.ops['child']['trainable_variables'],
                 "controller_trainable_variables": self.ops["controller"]["trainable_variables"]

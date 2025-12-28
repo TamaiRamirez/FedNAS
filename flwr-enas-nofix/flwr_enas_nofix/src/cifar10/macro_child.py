@@ -933,7 +933,7 @@ class MacroChild(Child):
       prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
 
       def test_fn(logits, labels):
-          return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
+        return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
 
       return (prediction_fn, test_fn)
 

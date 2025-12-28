@@ -58,6 +58,7 @@ class FlowerClient(NumPyClient):
         client_info["last_test_acc"] = result["child_test_acc"]
         client_info["last_valid_loss"] = result["child_valid_loss"]
         client_info["last_test_loss"] = result["child_test_loss"]
+        client_info["last_test_f1_score"] = result["child_test_f1_score"]
         client_info["child_weights_keys"] = child_keys
         save_controller_weights(result["controller_trainable_variables"], f"{save_path}/controller_weights.pkl")
 
@@ -77,7 +78,8 @@ class FlowerClient(NumPyClient):
         with open(f"{save_path}/results_client_{self.partition_id}_{actual_round}.json", "w") as f:
             json.dump(results_client, f, indent=4)
 
-        return model_weights, len(model_weights), {"test_accuracy": result["child_test_acc"]}
+        return model_weights, len(model_weights), {"test_f1_score": result["child_test_f1_score"]}
+        # return {weights, size of weights, (results -> aggregate fit function)}
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]
@@ -85,12 +87,14 @@ class FlowerClient(NumPyClient):
         test_acc = client_info.get("last_test_acc", 0.0)
         valid_loss = client_info.get("last_valid_loss", 0.0)
         test_loss = client_info.get("last_test_loss", 0.0)
+        test_f1_score = client_info.get("last_test_f1_score", 0.0)
         # print(f"[EVALUATE] child_valid_acc={valid_acc}, child_test_acc={test_acc}")
         return test_loss, len(self.data["images"]["test"]), {
             "child_valid_acc": valid_acc,
             "child_valid_loss": valid_loss,
             "child_test_acc": test_acc,
-            "child_test_loss": test_loss
+            "child_test_loss": test_loss,
+            "child_test_f1_score": test_f1_score
         }
 
 def client_fn(context: Context):
