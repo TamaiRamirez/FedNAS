@@ -56,6 +56,7 @@ ALPHA = toml_config["tool"]["flwr"]["app"]["config"]["alpha"]
 DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
 DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
 LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
+AGG_METHOD = toml_config["tool"]["flwr"]["app"]["config"]["agg_method"]
 
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
@@ -159,7 +160,7 @@ def load_data(partition_id, num_partitions, alpha=0.5):
     y_train = np.concatenate((y_train, y_train), axis=0)
 
     images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
-    images["valid"], labels["valid"] =(X_valid / 255.0).astype("float32"), np.int32(y_valid)
+    images["valid"], labels["valid"] = (X_valid / 255.0).astype("float32"), np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
@@ -190,13 +191,13 @@ def load_data(partition_id, num_partitions, alpha=0.5):
     print("-" * 80)
 
     if NON_IID:
-        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
+        save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
         # Create directories if they do not exist
         os.makedirs(save_path, exist_ok=True)
         with open(f"{save_path}/class_dist.json", "w") as f:
             json.dump(label_dist, f, indent=4)
     else:
-        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{partition_id}_data"
+        save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID/client_{partition_id}_data"
         # Create directories if they do not exist
         os.makedirs(save_path, exist_ok=True)
         with open(f"{save_path}/class_dist.json", "w") as f:

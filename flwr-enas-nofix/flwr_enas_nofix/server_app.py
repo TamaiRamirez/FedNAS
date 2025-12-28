@@ -3,8 +3,10 @@
 from flwr.common import Context, ndarrays_to_parameters, Metrics
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-from .my_strategy import CustomFedAvg
+from .my_strategy import CustomFedAvg, CustomFedAvgPerformace
 from typing import List, Tuple
+
+from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD
 
 def fit_config(rnd: int):
     return {"round": rnd}
@@ -25,14 +27,24 @@ def server_fn(context: Context):
     # parameters = ndarrays_to_parameters(load_model().get_weights())
 
     # Define strategy
-    strategy = CustomFedAvg(
-        num_rounds=num_rounds,
-        fraction_fit=1.0,
-        fraction_evaluate=1.0,
-        min_available_clients=2,
-        
-        on_fit_config_fn=fit_config
-    )
+    if AGG_METHOD == "fedavg":
+        strategy = CustomFedAvg(
+            num_rounds=num_rounds,
+            fraction_fit=1.0,
+            fraction_evaluate=1.0,
+            min_available_clients=2,
+            
+            on_fit_config_fn=fit_config
+        )
+    elif AGG_METHOD == "performance":
+        strategy = CustomFedAvgPerformace(
+            num_rounds=num_rounds,
+            fraction_fit=1.0,
+            fraction_evaluate=1.0,
+            min_available_clients=2,
+            
+            on_fit_config_fn=fit_config
+        )
     config = ServerConfig(num_rounds=num_rounds)
 
     return ServerAppComponents(strategy=strategy, config=config)

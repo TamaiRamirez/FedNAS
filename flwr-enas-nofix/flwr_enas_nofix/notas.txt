@@ -1,0 +1,1 @@
+fedavg, cifar10, IID 

@@ -24,8 +24,8 @@ serverapp = "flwr_enas_nofix.server_app:app"
 clientapp = "flwr_enas_nofix.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 2
-local-epochs = 3
+num-server-rounds = 8
+local-epochs = 40
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
@@ -33,12 +33,13 @@ non_iid=false
 alpha=1.0
 dataset = "uoft-cs/cifar10"
 dataset_name = "cifar10"
+agg_method = "fedavg"
 
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 2
+options.num-supernodes = 6
 
 [tool.flwr.federations.local-deployment]
 address = "127.0.0.1:9093"

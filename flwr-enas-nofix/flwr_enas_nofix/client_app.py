@@ -4,7 +4,7 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
 import json
 
-from flwr_enas_nofix.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
+from flwr_enas_nofix.task import PROJECT_PATH, DATASET_NAME, NON_IID, ALPHA, AGG_METHOD, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
 import copy
 
 # Define Flower Client and client_fn
@@ -31,9 +31,9 @@ class FlowerClient(NumPyClient):
         client_info = self.client_state.config_records["client_info"] # Charge context
         # Directorio de guardado
         if NON_IID:
-            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{self.partition_id}_data"
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{self.partition_id}_data"
         else:
-            save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{self.partition_id}_data"
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID/client_{self.partition_id}_data"
 
         # print("*"*80)
         # print(f"SAVE PATH: {save_path}, DATASET NAME: {DATASET_NAME}")
