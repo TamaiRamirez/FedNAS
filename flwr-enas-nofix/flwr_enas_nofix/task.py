@@ -58,6 +58,7 @@ DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
 LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
 AGG_METHOD = toml_config["tool"]["flwr"]["app"]["config"]["agg_method"]
 BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
+MU = toml_config["tool"]["flwr"]["app"]["config"]["mu"]
 
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
@@ -296,14 +297,29 @@ class Trainer:
         ChildClass = MacroChild
 
         # Initialize child model
-        child_model = ChildClass(
-            self.dataset["images"],
-            self.dataset["labels"],
-            clip_mode="norm",
-            optim_algo="momentum",
-            child_weights=self.arch["child_weights"],
-            transfer=self.transfer
-        )
+
+        if AGG_METHOD == "fedavg":
+
+            child_model = ChildClass(
+                self.dataset["images"],
+                self.dataset["labels"],
+                clip_mode="norm",
+                optim_algo="momentum",
+                child_weights=self.arch["child_weights"],
+                transfer=self.transfer,
+                mu = 0.0
+            )
+        
+        elif AGG_METHOD == "performance":
+            child_model = ChildClass(
+                self.dataset["images"],
+                self.dataset["labels"],
+                clip_mode="norm",
+                optim_algo="momentum",
+                child_weights=self.arch["child_weights"],
+                transfer=self.transfer,
+                mu = MU
+            )
         
         controller_ops = None
         dataset_valid_shuffle = None

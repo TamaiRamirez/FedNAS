@@ -51,6 +51,7 @@ class MacroChild(Child):
                seed = 42,
                child_weights = None,
                transfer = False,
+               mu = None
               ):
     super(self.__class__, self).__init__(
       images,
@@ -66,6 +67,11 @@ class MacroChild(Child):
     self.out_filters_scale = FLAGS.child_out_filters_scale
     self.out_filters = FLAGS.child_out_filters * self.out_filters_scale
     self.transfer = transfer
+
+    # Setting variables for FedProx
+    self.global_weights = child_weights
+    self.mu = mu
+
     if self.transfer:
       self.weights.weight_map = child_weights
     self.num_branches = FLAGS.child_num_branches
@@ -871,7 +877,14 @@ class MacroChild(Child):
   class Loss(LayeredModel):
     def __init__(self):
       def sscewl(logits, labels):
-        return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+        keys = list(self.weights.weight_map.keys())
+        proximal_term = 0.0
+
+        for key in keys:
+          proximal_term += (self.weights.weight_map[key] - self.global_weights[key]).norm(2)
+        
+
+        return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels) + (self.mu/2) * proximal_term
 
       self.layers = [sscewl, fw.reduce_mean]
 

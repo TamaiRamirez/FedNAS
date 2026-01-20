@@ -15,7 +15,7 @@ import os
 import time
 import numpy as np
 
-class CustomFedAvgPerformace(FedAvg):
+class CustomFedProxPerformace(FedAvg):
     """A strategy that keeps the core functionality of FedAvg with performance weightning and enables
     additional features such as: Saving global checkpoints, saving metrics to the local
     file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
@@ -143,6 +143,14 @@ class CustomFedAvgPerformace(FedAvg):
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum
+    
+class CustomFedAvg(FedAvg):
+    """A strategy that keeps the core functionality of FedAvg unchanged but enables
+    additional features such as: Saving global checkpoints, saving metrics to the local
+    file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
+    """
+    # PENDIENTE DE IMPLEMENTAR
+    None
     
 class CustomFedAvg(FedAvg):
     """A strategy that keeps the core functionality of FedAvg unchanged but enables

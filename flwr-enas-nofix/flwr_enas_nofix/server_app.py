@@ -3,7 +3,7 @@
 from flwr.common import Context, ndarrays_to_parameters, Metrics
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-from .my_strategy import CustomFedAvg, CustomFedAvgPerformace
+from .my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx
 from typing import List, Tuple
 
 from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD
@@ -36,8 +36,11 @@ def server_fn(context: Context):
             
             on_fit_config_fn=fit_config
         )
-    elif AGG_METHOD == "performance":
-        strategy = CustomFedAvgPerformace(
+    elif AGG_METHOD == "fedprox":
+        # PENDIENTE DE IMPLEMENTAR
+        None
+    else:
+        strategy = CustomFedProxPerformace(
             num_rounds=num_rounds,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
