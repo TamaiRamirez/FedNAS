@@ -444,43 +444,43 @@ class Child(object):
       bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [fw.relu, layer2, bn]
   
-  # NOTA: AÑADIDO MAXPOOLING Y AVG POOLING
-  class MaxPool3x3(LayeredModel):
-    def __init__(self, scope: str, data_format):
-        def layer(x):
-            # Convert to channels_last if needed
-            if data_format.name == "NCHW":
-                x = tf.transpose(x, [0, 2, 3, 1])
-            x = max_pool2d(
-                pool_size=3,
-                strides=1,
-                padding="same"
-            )(x)
-            # Convert back if needed
-            if data_format.name == "NCHW":
-                x = tf.transpose(x, [0, 3, 1, 2])
-            return x
+  # NOTA: AÑADIDO MAXPOOLING Y AVG POOLING (ni falta que hace, ya existe la clase POOL_BRANCH en Macro Child)
+  # class MaxPool3x3(LayeredModel):
+  #   def __init__(self, scope: str, data_format):
+  #       def layer(x):
+  #           # Convert to channels_last if needed
+  #           if data_format.name == "NCHW":
+  #               x = fw.transpose(x, [0, 2, 3, 1])
+  #           x = fw.max_pool2d(
+  #               pool_size=3,
+  #               strides=1,
+  #               padding="same"
+  #           )(x)
+  #           # Convert back if needed
+  #           if data_format.name == "NCHW":
+  #               x = fw.transpose(x, [0, 3, 1, 2])
+  #           return x
 
-        self.layers = [layer]
+  #       self.layers = [layer]
 
 
-  class AvgPool3x3(LayeredModel):
-      def __init__(self, scope: str, data_format):
-          def layer(x):
-              # Convert to channels_last if needed
-              if data_format.name == "NCHW":
-                  x = tf.transpose(x, [0, 2, 3, 1])
-              x = avg_pool2d(
-                  pool_size=3,
-                  strides=1,
-                  padding="same"
-              )(x)
-              # Convert back if needed
-              if data_format.name == "NCHW":
-                  x = tf.transpose(x, [0, 3, 1, 2])
-              return x
+  # class AvgPool3x3(LayeredModel):
+  #     def __init__(self, scope: str, data_format):
+  #         def layer(x):
+  #             # Convert to channels_last if needed
+  #             if data_format.name == "NCHW":
+  #                 x = fw.transpose(x, [0, 2, 3, 1])
+  #             x = fw.avg_pool2d(
+  #                 pool_size=3,
+  #                 strides=1,
+  #                 padding="same"
+  #             )(x)
+  #             # Convert back if needed
+  #             if data_format.name == "NCHW":
+  #                 x = fw.transpose(x, [0, 3, 1, 2])
+  #             return x
 
-          self.layers = [layer]
+  #         self.layers = [layer]
 
 
   class StemConv(LayeredModel):

@@ -135,7 +135,7 @@ class MacroChild(Child):
 
         for layer_id in range(child.num_layers):
           with fw.name_scope("layer_{0}".format(layer_id)):
-            if child.fixed_arc is None:
+            if child.fixed_arc is None: # ATENCIÓN
               self.model_layers.append(MacroChild.ENASLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse))
               layers_channels.append(out_filters)
             else:
@@ -305,22 +305,37 @@ class MacroChild(Child):
 
 
   # Because __call__ is overridden, this superclass is just for ease of find.
+
+  # NOTA: ESTA ES LA CLASE QUE SE EJECUTA PORQUE "FIXED_ARC" ES NONE Y "WHOLE_CHANNELS" ES TRUE (PARA ENCONTRAR EL CODIGO BUSCAR "ATENCIÓN")
   class ENASLayerWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse):
       self.layers = [lambda inputs: child.data_format.get_HW(inputs)]
       count = child.current_controller_arc()[start_idx]
+
+      """
+      class ConvBranch(LayeredModel):
+        def __init__(self, child, filter_size, is_training: bool, count, num_input_chan: int, out_filters: int, weights, reuse: bool, ch_mul: int, start_idx, separable: bool):
+      """
+      
+      # DEFINICION DE LAS 6 OPERACIONES POSIBLES
       with fw.name_scope('branch_0'):
-          branch_0 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+        # CONV_3X3
+        branch_0 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
       with fw.name_scope('branch_1'):
-          branch_1 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+        # SEP_CONV_3X3
+        branch_1 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True) 
       with fw.name_scope('branch_2'):
-          branch_2 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+        # CONV_5X5
+        branch_2 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
       with fw.name_scope('branch_3'):
-          branch_3 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+        # SEP_CONV_5X5
+        branch_3 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
       with fw.name_scope('branch_4'):
-          branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "avg", 0)
+        # MAX_POOL3X3
+        branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "avg", 0)
       with fw.name_scope('branch_5'):
-          branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "max", 0)
+        # AVG_POOL3X3
+        branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "max", 0)
 
       def branches(inputs):
         arms = []
@@ -383,7 +398,7 @@ class MacroChild(Child):
         from layer_id, but why bother...
       is_training: for batch_norm
     """
-    if self.whole_channels:
+    if self.whole_channels: # ATENCIÓN 
       return MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
     else:
       return MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
@@ -534,39 +549,39 @@ class MacroChild(Child):
       self.layers = []
       inp_c = num_input_chan
       count = child.current_controller_arc()[start_idx]
-      # if count in [0, 1, 2, 3]:
-      #   filter_size = [3, 3, 5, 5][count]
-      #   with fw.name_scope("conv_1x1") as scope:
-      #     self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
-      #   with fw.name_scope(f"conv_{filter_size}x{filter_size}") as scope:
-      #     self.layers.append(Child.ConvNxN(weights, reuse ,scope, filter_size, out_filters, child.data_format, is_training))
-      # elif count == 4:
-      #   pass # TODO Fill this in
-      # elif count == 5:
-      #   pass # TODO Fill this in
-
-      # NOTA: PRUEBA A VER SI METE CAPAS NUEVAS DE POOLING y LAS SEPARABLE CONV
-
-      if count in [0, 1]:
-        filter_size = [3, 5][count]
+      if count in [0, 1, 2, 3]:
+        filter_size = [3, 3, 5, 5][count]
         with fw.name_scope("conv_1x1") as scope:
           self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
         with fw.name_scope(f"conv_{filter_size}x{filter_size}") as scope:
-          self.layers.append(Child.ConvNxN(weights, reuse,scope, filter_size, out_filters, child.data_format, is_training))
-      elif count in [2,3]:
-        filter_size = [3, 5][count-2]
-        with fw.name_scope("conv_1x1") as scope:
-          self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
-        with fw.name_scope(f"sep_{filter_size}x{filter_size}") as scope:
-          self.layers.append(Child.SeparableConv(weights, reuse, scope, filter_size, out_filters, ch_mul=1, count=out_filters, data_format=child.data_format, is_training=is_training))
+          self.layers.append(Child.ConvNxN(weights, reuse ,scope, filter_size, out_filters, child.data_format, is_training))
       elif count == 4:
-        with fw.name_scope("max_pool_3x3") as scope:
-          self.layers.append(Child.MaxPool3x3(scope, child.data_format))
+        pass # TODO Fill this in
       elif count == 5:
-        with fw.name_scope("avg_pool_3x3") as scope:
-          self.layers.append(Child.AvgPool3x3(scope, child.data_format))
-      else:
-        raise ValueError(f"Unknown operation number '{count}'")
+        pass # TODO Fill this in
+
+      # NOTA: PRUEBA A VER SI METE CAPAS NUEVAS DE POOLING y LAS SEPARABLE CONV
+
+      # if count in [0, 1]:
+      #   filter_size = [3, 5][count]
+      #   with fw.name_scope("conv_1x1") as scope:
+      #     self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
+      #   with fw.name_scope(f"conv_{filter_size}x{filter_size}") as scope:
+      #     self.layers.append(Child.ConvNxN(weights, reuse,scope, filter_size, out_filters, child.data_format, is_training))
+      # elif count in [2, 3]:
+      #   filter_size = [3, 5][count-2]
+      #   with fw.name_scope("conv_1x1") as scope:
+      #     self.layers.append(Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format))
+      #   with fw.name_scope(f"sep_{filter_size}x{filter_size}") as scope:
+      #     self.layers.append(Child.SeparableConv(weights, reuse, scope, filter_size, out_filters, ch_mul=1, count=out_filters, data_format=child.data_format, is_training=is_training))
+      # elif count == 4:
+      #   with fw.name_scope("max_pool_3x3") as scope:
+      #     self.layers.append(Child.MaxPool3x3(scope, child.data_format))
+      # elif count == 5:
+      #   with fw.name_scope("avg_pool_3x3") as scope:
+      #     self.layers.append(Child.AvgPool3x3(scope, child.data_format))
+      # else:
+      #   raise ValueError(f"Unknown operation number '{count}'")
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 1
@@ -840,11 +855,12 @@ class MacroChild(Child):
           return input_conv(x)
 
       self.layers = [layer0]
-      avg_pool2d = fw.avg_pool2d([3, 3], [1, 1], 'SAME', data_format=child.data_format.actual)
-      max_pool2d = fw.max_pool2d([3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
+      
       if avg_or_max == "avg":
+        avg_pool2d = fw.avg_pool2d([3, 3], [1, 1], 'SAME', data_format=child.data_format.actual)
         self.layers.append(avg_pool2d)
       elif avg_or_max == "max":
+        max_pool2d = fw.max_pool2d([3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
         self.layers.append(max_pool2d)
       else:
         raise ValueError(f"Unknown pool {avg_or_max}")

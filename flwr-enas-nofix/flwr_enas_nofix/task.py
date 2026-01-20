@@ -57,6 +57,7 @@ DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
 DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
 LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
 AGG_METHOD = toml_config["tool"]["flwr"]["app"]["config"]["agg_method"]
+BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
 
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
@@ -152,58 +153,109 @@ def load_data(partition_id, num_partitions, alpha=0.5):
     print("-" * 80)
     print("Number of images Original Dataset TRAIN:", train_set.shape[0])
     print("Number of images Original Dataset TEST:", test_set.shape[0])
-
-
-    X_train, X_valid, y_train, y_valid = train_test_split(train_set["img"], train_set["label"], test_size=0.2, random_state=42, stratify=train_set["label"])
-
-    X_train = np.concatenate((X_train, X_train), axis=0)
-    y_train = np.concatenate((y_train, y_train), axis=0)
-
-    images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
-    images["valid"], labels["valid"] = (X_valid / 255.0).astype("float32"), np.int32(y_valid)
     
-    mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-    std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+    if DATASET_NAME == "cifar10":
 
-    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
+        y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+        
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-    images["train"] = np.float32((images["train"] - mean) / std)
-    images["valid"] = np.float32((images["valid"] - mean) / std)
+        images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
+        images["valid"], labels["valid"] = (X_valid / 255.0).astype("float32"), np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        images["test"] = (test_set["img"] / 255.0).astype("float32")
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+
+        print("Number of images in dataset (Train):", images["train"].shape[0])
+        print("Number of images in dataset (Valid):", images["valid"].shape[0])
+        print("Number of images in dataset (Test):", images["test"].shape[0])
+        
+        print("-" * 80)
+        print("Label distribution:")
+        label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
+        for split in ["train", "valid", "test"]:
+            label_counts = Counter(labels[split])
+            print(f"{split.upper()} set class distribution:")
+            for label in sorted(label_counts):
+                print(f"  Class {label}: {label_counts[label]} samples")
+                label_dist[split].append({str(label): label_counts[label]})
+            print("-" * 40)
+        print("-" * 80)
+
+        if NON_IID:
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
+            # Create directories if they do not exist
+            os.makedirs(save_path, exist_ok=True)
+            with open(f"{save_path}/class_dist.json", "w") as f:
+                json.dump(label_dist, f, indent=4)
+        else:
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID/client_{partition_id}_data"
+            # Create directories if they do not exist
+            os.makedirs(save_path, exist_ok=True)
+            with open(f"{save_path}/class_dist.json", "w") as f:
+                json.dump(label_dist, f, indent=4)
+        return {"images": images, "labels": labels}
     
-    images["test"] = (test_set["img"] / 255.0).astype("float32")
-    images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+    elif DATASET_NAME == "cifar100":
+        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
+        y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
+        
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-    print("Number of images in dataset (Train):", images["train"].shape[0])
-    print("Number of images in dataset (Valid):", images["valid"].shape[0])
-    print("Number of images in dataset (Test):", images["test"].shape[0])
-    
-    print("-" * 80)
-    print("Label distribution:")
-    label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
-    for split in ["train", "valid", "test"]:
-        label_counts = Counter(labels[split])
-        print(f"{split.upper()} set class distribution:")
-        for label in sorted(label_counts):
-            print(f"  Class {label}: {label_counts[label]} samples")
-            label_dist[split].append({str(label): label_counts[label]})
-        print("-" * 40)
-    print("-" * 80)
+        images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
+        images["valid"], labels["valid"] = (X_valid / 255.0).astype("float32"), np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
-    if NON_IID:
-        save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
-        # Create directories if they do not exist
-        os.makedirs(save_path, exist_ok=True)
-        with open(f"{save_path}/class_dist.json", "w") as f:
-            json.dump(label_dist, f, indent=4)
-    else:
-        save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID/client_{partition_id}_data"
-        # Create directories if they do not exist
-        os.makedirs(save_path, exist_ok=True)
-        with open(f"{save_path}/class_dist.json", "w") as f:
-            json.dump(label_dist, f, indent=4)
-    return {"images": images, "labels": labels}
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        images["test"] = (test_set["img"] / 255.0).astype("float32")
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set['fine_label'])
+
+        print("Number of images in dataset (Train):", images["train"].shape[0])
+        print("Number of images in dataset (Valid):", images["valid"].shape[0])
+        print("Number of images in dataset (Test):", images["test"].shape[0])
+        
+        print("-" * 80)
+        print("Label distribution:")
+        label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
+        for split in ["train", "valid", "test"]:
+            label_counts = Counter(labels[split])
+            print(f"{split.upper()} set class distribution:")
+            for label in sorted(label_counts):
+                print(f"  Class {label}: {label_counts[label]} samples")
+                label_dist[split].append({str(label): label_counts[label]})
+            print("-" * 40)
+        print("-" * 80)
+
+        if NON_IID:
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
+            # Create directories if they do not exist
+            os.makedirs(save_path, exist_ok=True)
+            with open(f"{save_path}/class_dist.json", "w") as f:
+                json.dump(label_dist, f, indent=4)
+        else:
+            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID/client_{partition_id}_data"
+            # Create directories if they do not exist
+            os.makedirs(save_path, exist_ok=True)
+            with open(f"{save_path}/class_dist.json", "w") as f:
+                json.dump(label_dist, f, indent=4)
+        return {"images": images, "labels": labels}
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "data/cifar10", "")
@@ -473,44 +525,6 @@ class Trainer:
             if epoch >= FLAGS.num_epochs:
                 print("Test Accuracy: ")
                 child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
-
-                # # Directorio de guardado
-                # plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
-                # os.makedirs(plot_dir, exist_ok=True)
-                
-                # # Gráfico de precisión (accuracy)
-                # plt.figure()
-                # plt.plot(smooth_curve(child_train_accuracies), label="Child Train Accuracy")
-                # plt.plot(smooth_curve(child_valid_accuracies), label="Child Validation Accuracy")
-                # plt.plot(smooth_curve(child_train_losses), label="Child Train Loss")
-                # plt.plot(smooth_curve(child_valid_losses), label="Child Validation Loss")
-                # # Línea horizontal punteada en y=1
-                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                # plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
-                # plt.xlabel("Epoch")
-                # plt.ylabel("Accuracy")
-                # # plt.ylim(0, 2)
-                # plt.legend()
-                # plt.grid(True)
-                # plt.tight_layout()
-                # plt.savefig(f"{plot_dir}/child_metrics.png")
-                # plt.close()
-                
-                # # Gráfico de precisión (accuracy)
-                # plt.figure()
-                # plt.plot(smooth_curve(controller_accuracies), label="Controller Accuracy")
-                # plt.plot(smooth_curve(controller_losses), label="Controller Loss")
-                # # Línea horizontal punteada en y=1
-                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                # plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
-                # plt.xlabel("Epoch")
-                # plt.ylabel("Accuracy")
-                # # plt.ylim(0, 2)
-                # plt.legend()
-                # plt.grid(True)
-                # plt.tight_layout()
-                # plt.savefig(f"{plot_dir}/controller_metrics.png")
-                # plt.close()
                 
                 break
 
