@@ -6,7 +6,7 @@ from flwr.server.strategy import FedAvg
 from .my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx
 from typing import List, Tuple
 
-from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD
+from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU
 
 def fit_config(rnd: int):
     return {"round": rnd}
@@ -33,20 +33,25 @@ def server_fn(context: Context):
             fraction_fit=1.0,
             fraction_evaluate=1.0,
             min_available_clients=2,
-            
             on_fit_config_fn=fit_config
         )
     elif AGG_METHOD == "fedprox":
-        # PENDIENTE DE IMPLEMENTAR
-        None
+        strategy = CustomFedProx(
+            num_rounds=num_rounds,
+            fraction_fit=1.0,
+            fraction_evaluate=1.0,
+            min_available_clients=2,
+            on_fit_config_fn=fit_config,
+            proximal_mu = MU
+        )
     else:
         strategy = CustomFedProxPerformace(
             num_rounds=num_rounds,
             fraction_fit=1.0,
             fraction_evaluate=1.0,
             min_available_clients=2,
-            
-            on_fit_config_fn=fit_config
+            on_fit_config_fn=fit_config,
+            proximal_mu = MU
         )
     config = ServerConfig(num_rounds=num_rounds)
 

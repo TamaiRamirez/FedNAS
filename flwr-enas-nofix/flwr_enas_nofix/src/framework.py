@@ -155,6 +155,8 @@ random_uniform = tf.random.uniform
 random_uniform_initializer = tf.random_uniform_initializer
 range = tf.range
 reduce_mean = tf.reduce_mean
+square = tf.square
+print = tf.print
 reduce_sum = tf.reduce_sum
 relu = tf.nn.relu
 

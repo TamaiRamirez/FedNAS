@@ -310,7 +310,7 @@ class Trainer:
                 mu = 0.0
             )
         
-        elif AGG_METHOD == "performance":
+        else:
             child_model = ChildClass(
                 self.dataset["images"],
                 self.dataset["labels"],

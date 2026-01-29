@@ -11,6 +11,7 @@ import flwr_enas_nofix.src.framework as fw
 from flwr_enas_nofix.src.cifar10.child import Child
 from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm, BatchNormWithMask
 from flwr_enas_nofix.src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
+import copy
 
 import psutil
 import gc
@@ -69,11 +70,13 @@ class MacroChild(Child):
     self.transfer = transfer
 
     # Setting variables for FedProx
-    self.global_weights = child_weights
     self.mu = mu
-
+    
     if self.transfer:
-      self.weights.weight_map = child_weights
+      self.global_weights = copy.deepcopy(child_weights)
+      self.weights.weight_map = copy.deepcopy(child_weights)
+
+    
     self.num_branches = FLAGS.child_num_branches
 
     pool_distance = self.num_layers // 3
@@ -877,14 +880,8 @@ class MacroChild(Child):
   class Loss(LayeredModel):
     def __init__(self):
       def sscewl(logits, labels):
-        keys = list(self.weights.weight_map.keys())
-        proximal_term = 0.0
-
-        for key in keys:
-          proximal_term += (self.weights.weight_map[key] - self.global_weights[key]).norm(2)
         
-
-        return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels) + (self.mu/2) * proximal_term
+        return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 
       self.layers = [sscewl, fw.reduce_mean]
 
@@ -1032,7 +1029,17 @@ class MacroChild(Child):
 
   def generate_train_losses(self, images, labels):
       logits = self.train_model(images)
-      return logits, self.loss(logits, labels), self.train_loss(logits, labels), self.train_acc(logits, labels)
+      proximal_term = fw.constant(0.0, dtype=fw.float32)
+
+      if self.transfer:
+        keys = list(self.weights.weight_map.keys())
+        for key in keys:
+          diff = self.weights.weight_map[key] - self.global_weights[key]
+          proximal_term += fw.reduce_sum(fw.square(diff))
+
+      # fw.print("Prox:", (self.mu/2) * proximal_term)
+      
+      return logits, self.loss(logits, labels) + (self.mu/2) * proximal_term, self.train_loss(logits, labels) + (self.mu/2) * proximal_term, self.train_acc(logits, labels)
 
   def generate_valid_logits(self, images):
       return self.valid_model(images)
