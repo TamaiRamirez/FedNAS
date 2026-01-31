@@ -13,6 +13,10 @@ if gpus:
   except RuntimeError as e:
     print(e)
 
+tf.random.set_seed(
+  42
+)
+
 class NameScope(object):
   singleton = None
 

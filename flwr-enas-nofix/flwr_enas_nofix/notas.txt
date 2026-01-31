@@ -1,9 +1,1 @@
 fedavg, cifar10, IID
-fedavg, cifar10, Non-IID, 1.0
-fedavg, cifar10, Non-IID, 0.5
-fedavg, cifar10, Non-IID, 0.1
-
-fedprox, MU=0.0, cifar10, IID
-fedprox, MU=0.01, cifar10, Non-IID, 1.0
-fedprox, MU=0.1, cifar10, Non-IID, 0.5
-fedprox, MU=1.0, cifar10, Non-IID, 0.1

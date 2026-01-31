@@ -14,135 +14,141 @@ import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
 import numpy as np
+from experiment_api import get_controller_weights_dir, get_results_dir, get_exp_id, get_experiment_dir
+import pandas as pd
 
 class CustomFedProxPerformace(FedProx):
     """A strategy that keeps the core functionality of FedProx with performance weightning and enables
     additional features such as: Saving global checkpoints, saving metrics to the local
     file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
     """
+    
+    # NOT IMPLEMENTED YET
+    
+    None
+    
+    # def __init__(self, num_rounds, initial_parameters=None, *args, **kwargs):
+    #     super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
 
-    def __init__(self, num_rounds, initial_parameters=None, *args, **kwargs):
-        super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
-
-        # Dictionary to store metrics
-        self.results_to_save = {}
-        self.start_time = time.time()
-        self.num_rounds = num_rounds
+    #     # Dictionary to store metrics
+    #     self.results_to_save = {}
+    #     self.start_time = time.time()
+    #     self.num_rounds = num_rounds
         
-    def performance_aggregate(self, results: list[tuple[NDArrays, int]], total_acc) -> NDArrays:
-        """Compute performance weighted average."""
-        # Calculate the total number of examples used during training
-        num_examples_total = sum(num_examples for (_, num_examples, _) in results)
+    # def performance_aggregate(self, results: list[tuple[NDArrays, int]], total_acc) -> NDArrays:
+    #     """Compute performance weighted average."""
+    #     # Calculate the total number of examples used during training
+    #     num_examples_total = sum(num_examples for (_, num_examples, _) in results)
 
-        # Create a list of weights, each multiplied by the related number of examples
-        weighted_weights = [
-            [layer * num_examples * acc/total_acc for layer in weights] for weights, num_examples, acc in results
-        ]
+    #     # Create a list of weights, each multiplied by the related number of examples
+    #     weighted_weights = [
+    #         [layer * num_examples * acc/total_acc for layer in weights] for weights, num_examples, acc in results
+    #     ]
 
-        # Compute average weights of each layer
-        weights_prime: NDArrays = [
-            reduce(np.add, layer_updates) / num_examples_total
-            for layer_updates in zip(*weighted_weights, strict=True)
-        ]
-        return weights_prime
+    #     # Compute average weights of each layer
+    #     weights_prime: NDArrays = [
+    #         reduce(np.add, layer_updates) / num_examples_total
+    #         for layer_updates in zip(*weighted_weights, strict=True)
+    #     ]
+    #     return weights_prime
 
-    def aggregate_fit(
-        self,
-        server_round: int,
-        results: list[tuple[ClientProxy, FitRes]],
-        failures: list[tuple[ClientProxy, FitRes] | BaseException],
-    ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
-        """Aggregate received model updates and save global model checkpoint."""
-        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
-        # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
-        #     server_round, results, failures
-        # )
+    # def aggregate_fit(
+    #     self,
+    #     server_round: int,
+    #     results: list[tuple[ClientProxy, FitRes]],
+    #     failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    # ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
+    #     """Aggregate received model updates and save global model checkpoint."""
+    #     """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+    #     # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
+    #     #     server_round, results, failures
+    #     # )
         
-        test_acc = []
-        for _, res in results:
-            test_acc.append(float(next(iter(res.metrics.values()))))
-        total_f1 = max(test_acc)
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
-            return None, {}
+    #     test_acc = []
+    #     for _, res in results:
+    #         test_acc.append(float(next(iter(res.metrics.values()))))
+    #     total_f1 = max(test_acc)
+    #     if not results:
+    #         return None, {}
+    #     # Do not aggregate if there are failures and failures are not accepted
+    #     if not self.accept_failures and failures:
+    #         return None, {}
 
         
-        # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, float(next(iter(res.metrics.values()))))
-            for _, fit_res in results
-        ]
-        aggregated_ndarrays = self.performance_aggregate(weights_results, total_f1)
+    #     # Convert results
+    #     weights_results = [
+    #         (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, float(next(iter(res.metrics.values()))))
+    #         for _, fit_res in results
+    #     ]
+    #     aggregated_ndarrays = self.performance_aggregate(weights_results, total_f1)
 
-        parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
+    #     parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        # if self.fit_metrics_aggregation_fn:
-        #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-        #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+    #     # Aggregate custom metrics if aggregation fn was provided
+    #     metrics_aggregated = {}
+    #     # if self.fit_metrics_aggregation_fn:
+    #     #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+    #     #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
 
-        return parameters_aggregated, metrics_aggregated
+    #     return parameters_aggregated, metrics_aggregated
 
-    def aggregate_evaluate(
-        self,
-        server_round: int,
-        results: list[tuple[ClientProxy, EvaluateRes]],
-        failures: list[BaseException],
-    ) -> tuple[float, dict[str, float]]:
+    # def aggregate_evaluate(
+    #     self,
+    #     server_round: int,
+    #     results: list[tuple[ClientProxy, EvaluateRes]],
+    #     failures: list[BaseException],
+    # ) -> tuple[float, dict[str, float]]:
 
-        if not results:
-            print(f"[Round {server_round}] No evaluation results received.")
-            return None, {}
+    #     if not results:
+    #         print(f"[Round {server_round}] No evaluation results received.")
+    #         return None, {}
 
-        total_examples = sum(res.num_examples for _, res in results)
+    #     total_examples = sum(res.num_examples for _, res in results)
         
-        # Inicializar acumuladores
-        loss_total = 0.0
-        metrics_accum = {}
-        test_f1 = []
-        for _, res in results:
-            weight = res.num_examples / total_examples
-            loss_total += res.loss * weight
+    #     # Inicializar acumuladores
+    #     loss_total = 0.0
+    #     metrics_accum = {}
+    #     test_f1 = []
+    #     for _, res in results:
+    #         weight = res.num_examples / total_examples
+    #         loss_total += res.loss * weight
 
-            for key, value in res.metrics.items():
-                if key not in metrics_accum:
-                    metrics_accum[key] = 0.0
-                metrics_accum[key] += value * weight
-                if key=="child_test_f1_score":
-                    test_f1.append(value * weight)
+    #         for key, value in res.metrics.items():
+    #             if key not in metrics_accum:
+    #                 metrics_accum[key] = 0.0
+    #             metrics_accum[key] += value * weight
+    #             if key=="child_test_f1_score":
+    #                 test_f1.append(value * weight)
 
-        CV = np.std(test_f1)/np.mean(test_f1) # coeficiente de variación (CV) F1 Score
+    #     CV = np.std(test_f1)/np.mean(test_f1) # coeficiente de variación (CV) F1 Score
 
-        # Guardar resultados para esta ronda
-        round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
-        self.results_to_save[server_round] = round_results
-        # Directorio de guardado
-        if NON_IID:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}"
-        else:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID"
+    #     # Guardar resultados para esta ronda
+    #     round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
+    #     self.results_to_save[server_round] = round_results
+    #     # Directorio de guardado
+    #     if NON_IID:
+    #         save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}"
+    #     else:
+    #         save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID"
 
-        # Guardar en JSON
-        with open(f"{save_path}/results_global.json", "w") as f:
-            json.dump(self.results_to_save, f, indent=4)
+    #     # Guardar en JSON
+    #     with open(f"{save_path}/results_global.json", "w") as f:
+    #         json.dump(self.results_to_save, f, indent=4)
 
-        # Mostrar en consola
-        print(f"[Round {server_round}] Aggregated Metrics:")
-        for k, v in round_results.items():
-            print(f"  {k}: {v:.4f}")
+    #     # Mostrar en consola
+    #     print(f"[Round {server_round}] Aggregated Metrics:")
+    #     for k, v in round_results.items():
+    #         print(f"  {k}: {v:.4f}")
 
-        if server_round == self.num_rounds:  # última ronda
-            elapsed = time.time() - self.start_time
-            elapsed_td = timedelta(seconds=int(elapsed))
-            with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
-                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
-            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+    #     if server_round == self.num_rounds:  # última ronda
+    #         elapsed = time.time() - self.start_time
+    #         elapsed_td = timedelta(seconds=int(elapsed))
+    #         with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
+    #             archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
+    #         print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
-        return loss_total, metrics_accum
+    #     return loss_total, metrics_accum
     
 class CustomFedProx(FedProx):
     """A strategy that keeps the core functionality of FedProx unchanged but enables
@@ -187,7 +193,7 @@ class CustomFedProx(FedProx):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        test_accuracies = []
+        f1_scores = []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -196,34 +202,43 @@ class CustomFedProx(FedProx):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
-                if key=="child_test_acc":
-                    test_accuracies.append(value * weight)
+                if key=="child_test_f1_score":
+                    f1_scores.append(value * weight)
 
-        CV = np.std(test_accuracies)/np.mean(test_accuracies) # coeficiente de variación (CV)
-
+        # Analisis de fairness
+        CV_clients = np.std(f1_scores)/np.mean(f1_scores) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2))  # Índice de Jain (0 a 1, 1 es perfecto)
+        # A menor CV y mayor índice de Jain, mayor fairness.
+        
+        
         # Guardar resultados para esta ronda
-        round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
-        self.results_to_save[server_round] = round_results
-        # Directorio de guardado
-        if NON_IID:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}"
-        else:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID"
+        global_results = {
+            "exp_id": get_exp_id(),
+            "round": server_round,
+            "loss": loss_total, 
+            **metrics_accum, 
+            "CV": CV_clients, 
+            "Jain_index": Jain_index}
 
-        # Guardar en JSON
-        with open(f"{save_path}/results_global.json", "w") as f:
-            json.dump(self.results_to_save, f, indent=4)
+        path = get_results_dir() / f"global_metrics.parquet"
+        table = pa.Table.from_pylist([global_results])
+        if path.exists():
+            pq.write_table(table, path, append=True)
+        else:
+            pq.write_table(table, path)
 
         # Mostrar en consola
         print(f"[Round {server_round}] Aggregated Metrics:")
-        for k, v in round_results.items():
+        for k, v in global_results.items():
             print(f"  {k}: {v:.4f}")
 
         if server_round == self.num_rounds:  # última ronda
+            exp_dir = get_experiment_dir()
+            path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
-            with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
-                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
+            with open(path, "w") as f:
+                f.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum
@@ -238,7 +253,7 @@ class CustomFedAvg(FedAvg):
         super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
 
         # Dictionary to store metrics
-        self.results_to_save = {}
+        # self.results_to_save = {}
         self.start_time = time.time()
         self.num_rounds = num_rounds
 
@@ -272,7 +287,7 @@ class CustomFedAvg(FedAvg):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        test_accuracies = []
+        f1_scores = []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -281,34 +296,54 @@ class CustomFedAvg(FedAvg):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
-                if key=="child_test_acc":
-                    test_accuracies.append(value * weight)
+                if key=="child_test_f1_score":
+                    f1_scores.append(value * weight)
 
-        CV = np.std(test_accuracies)/np.mean(test_accuracies) # coeficiente de variación (CV)
-
+        # Analisis de fairness
+        CV_clients = np.std(f1_scores)/np.mean(f1_scores) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2))  # Índice de Jain (0 a 1, 1 es perfecto)
+        # A menor CV y mayor índice de Jain, mayor fairness.
+        
+        
         # Guardar resultados para esta ronda
-        round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
-        self.results_to_save[server_round] = round_results
-        # Directorio de guardado
-        if NON_IID:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}"
-        else:
-            save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID"
+        global_results = {
+            "exp_id": get_exp_id(),
+            "round": server_round,
+            "loss": loss_total, 
+            "CV": CV_clients, 
+            "Jain_index": Jain_index,
+            **metrics_accum}
 
-        # Guardar en JSON
-        with open(f"{save_path}/results_global.json", "w") as f:
-            json.dump(self.results_to_save, f, indent=4)
+        path = get_results_dir() / f"global_metrics.parquet"
+        # table = pa.Table.from_pylist([global_results])
+        # if path.exists():
+        #     pq.write_table(table, path, append=True)
+        # else:
+        #     pq.write_table(table, path)
+        
+        df = pd.DataFrame([global_results])
+        
+        if path.exists():
+            df_existing = pd.read_parquet(path)
+            df = pd.concat([df_existing, df], ignore_index=True)
+
+        df.to_parquet(path, engine="pyarrow", index=False)
 
         # Mostrar en consola
         print(f"[Round {server_round}] Aggregated Metrics:")
-        for k, v in round_results.items():
-            print(f"  {k}: {v:.4f}")
+        for k, v in global_results.items():
+            if isinstance(v, float):
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
 
         if server_round == self.num_rounds:  # última ronda
+            exp_dir = get_experiment_dir()
+            path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
-            with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
-                archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
+            with open(path, "w") as f:
+                f.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum

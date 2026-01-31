@@ -3,21 +3,14 @@
 from flwr.common import Context, ndarrays_to_parameters, Metrics
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-from .my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx
+from flwr_enas_nofix.my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx
 from typing import List, Tuple
 
-from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU
+from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt
 
 def fit_config(rnd: int):
     return {"round": rnd}
 
-# def weighted_average (metrics: List[Tuple[int, Metrics]]) -> Metrics:
-#     """Function to weight aggregate the metrics based on num examples"""
-#     # Loop trough all metrics received compute accuracies x examples
-#     accuracies = [num_examples * m["child_valid_acc"] for num_examples, m in metrics]
-#     total_examples = sum(num_examples for num_examples, _ in metrics)
-#     # Return weighted average accuracy
-#     return {"weighted_val_accuracy": sum(accuracies) / total_examples}
 
 def server_fn(context: Context):
     # Read from config
@@ -25,7 +18,10 @@ def server_fn(context: Context):
 
     # Get parameters to initialize global model
     # parameters = ndarrays_to_parameters(load_model().get_weights())
-
+    
+    # Create experiment metadata txt
+    write_experiment_txt()
+    
     # Define strategy
     if AGG_METHOD == "fedavg":
         strategy = CustomFedAvg(

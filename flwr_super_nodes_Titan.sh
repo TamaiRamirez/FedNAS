@@ -4,7 +4,23 @@ set -euo pipefail
 
 NODES=2
 PIDS=()
-LOGDIR=/workspace/flwr-enas-nofix/logs
+
+BASE_DIR="/workspace/flwr-enas-nofix/experiments"
+TODAY=$(date +"%Y%m%d")
+
+# Buscar subcarpetas del día con formato YYYYMMDD_N
+LAST_EXP=$(find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d -name "${TODAY}_*" \
+           -printf "%f\n" 2>/dev/null | sort -V | tail -n 1)
+
+if [[ -z "$LAST_EXP" ]]; then
+  echo "No se encontró experimento para hoy"
+  exit 1
+fi
+
+EXP_DIR="$BASE_DIR/$LAST_EXP"
+
+echo "Usando EXPERIMENT_DIR=$EXP_DIR"
+LOGDIR="$EXP_DIR/logs"
 
 cleanup() {
   echo "Cerrando supernodes Titan..."
