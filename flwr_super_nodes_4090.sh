@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-NODES=4
+NODES=6
 PIDS=()
 
 BASE_DIR="/workspace/flwr-enas-nofix/experiments"

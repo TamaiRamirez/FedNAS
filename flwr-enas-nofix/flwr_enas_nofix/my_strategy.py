@@ -216,29 +216,40 @@ class CustomFedProx(FedProx):
             "exp_id": get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
-            **metrics_accum, 
             "CV": CV_clients, 
-            "Jain_index": Jain_index}
+            "Jain_index": Jain_index,
+            **metrics_accum}
 
         path = get_results_dir() / f"global_metrics.parquet"
-        table = pa.Table.from_pylist([global_results])
+        # table = pa.Table.from_pylist([global_results])
+        # if path.exists():
+        #     pq.write_table(table, path, append=True)
+        # else:
+        #     pq.write_table(table, path)
+        
+        df = pd.DataFrame([global_results])
+        
         if path.exists():
-            pq.write_table(table, path, append=True)
-        else:
-            pq.write_table(table, path)
+            df_existing = pd.read_parquet(path)
+            df = pd.concat([df_existing, df], ignore_index=True)
+
+        df.to_parquet(path, engine="pyarrow", index=False)
 
         # Mostrar en consola
         print(f"[Round {server_round}] Aggregated Metrics:")
         for k, v in global_results.items():
-            print(f"  {k}: {v:.4f}")
+            if isinstance(v, float):
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
 
         if server_round == self.num_rounds:  # última ronda
             exp_dir = get_experiment_dir()
             path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
-            with open(path, "w") as f:
-                f.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
+            with open(path, "a") as f:
+                f.write(f"Tiempo Total de entrenamiento: {elapsed_td} \n")
             print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
 
         return loss_total, metrics_accum
@@ -342,8 +353,8 @@ class CustomFedAvg(FedAvg):
             path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
-            with open(path, "w") as f:
-                f.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
-            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+            with open(path, "a") as f:
+                f.write(f"Total training time: {elapsed_td} \n")
+            print(f"⏱ Total training time: {elapsed_td}")
 
         return loss_total, metrics_accum

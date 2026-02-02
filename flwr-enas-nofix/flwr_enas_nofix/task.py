@@ -62,6 +62,8 @@ LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
 AGG_METHOD = toml_config["tool"]["flwr"]["app"]["config"]["agg_method"]
 BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
 MU = toml_config["tool"]["flwr"]["app"]["config"]["mu"]
+NUM_ROUNDS = toml_config["tool"]["flwr"]["app"]["config"]["num-server-rounds"]
+NUM_NODES = toml_config["tool"]["flwr"]["app"]["config"]["num-nodes"]
 
 def write_experiment_txt():
     exp_dir = get_experiment_dir()
@@ -73,19 +75,22 @@ def write_experiment_txt():
     with open(path, "w") as f:
         f.write(f"EXPERIMENT ID: {get_exp_id()}\n")
         f.write(f"STATUS: VALID\n") # valid | failed | discarded | debug
+        f.write("REASON: N/A\n\n")
         f.write(f"DATE: {datetime.now()}\n\n")
-        f.write(f"PROJECT_PATH: {PROJECT_PATH}\n")
-        f.write(f"DATASET_NAME: {DATASET_NAME}\n")
+        f.write("CONFIGURATION:\n")
+        f.write(f"\tDATASET_NAME: {DATASET_NAME}\n")
         if NON_IID:
-            f.write(f"DATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+            f.write(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
         
         else:
-            f.write(f"DATA PARTITIONING: IID\n")
-        f.write(f"AGG_METHOD: {AGG_METHOD}\n")
+            f.write(f"\tDATA PARTITIONING: IID\n")
+        f.write(f"\tAGG_METHOD: {AGG_METHOD}\n")
+        f.write(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+        f.write(f"\tNUM_NODES: {NUM_NODES}\n")
         if AGG_METHOD != "fedavg":
-            f.write(f"MU: {MU}\n")
-        f.write(f"BATCH_SIZE: {BATCH_SIZE}\n")
-        f.write(f"LOCAL_EPOCHS: {LOCAL_EPOCHS}\n")
+            f.write(f"\tMU: {MU}\n")
+        f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+        f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
 
 
 def smooth_curve(points, factor=0.8):
