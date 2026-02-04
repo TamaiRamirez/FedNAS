@@ -29,7 +29,7 @@ rate        = 0.95                # suave
 dec_min     = lr_global_r * 0.1   # NO absoluto
 lr_warmup   = None
 """
-DEFINE_integer("child_lr_dec_every", 1, "")
+DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule") # Mejor usar el Scheduler Regular en FL
 DEFINE_float("child_lr_dec_rate", 0.95, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
