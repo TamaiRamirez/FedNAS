@@ -9,13 +9,15 @@ if gpus:
   try:
     # tf.config.set_visible_devices(gpus[0], 'GPU')
     tf.config.experimental.set_memory_growth(gpus[0], True)
-    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*7)])
+    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*4)])
   except RuntimeError as e:
     print(e)
 
 tf.random.set_seed(
   42
 )
+
+tf.config.optimizer.set_jit(False)  # Disable XLA
 
 class NameScope(object):
   singleton = None
@@ -72,6 +74,7 @@ class WeightRegistry(object):
 
 
 # TensorFlow 2
+clear_session = tf.keras.backend.clear_session
 GradientTape = tf.GradientTape
 Graph = tf.Graph
 Hook = tf.keras.callbacks.ModelCheckpoint #tf.estimator.CheckpointSaverHook

@@ -17,13 +17,24 @@ DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")
 DEFINE_float("child_l2_reg", 0.00025, "")
-DEFINE_float("child_lr", 0.05, "")
-DEFINE_integer("child_lr_dec_every", 100, "")
-DEFINE_boolean("child_lr_cosine", True, "Use cosine lr schedule")
-DEFINE_float("child_lr_dec_rate", 0.1, "")
+# DEFINE_float("child_lr", 0.05, "")
+
+
+"""
+Recomendacion de Gepeto para Scheduler:
+init        = lr_global_r
+start       = 0
+every       = num_train_batches   # 1 decay por época
+rate        = 0.95                # suave
+dec_min     = lr_global_r * 0.1   # NO absoluto
+lr_warmup   = None
+"""
+DEFINE_integer("child_lr_dec_every", 1, "")
+DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule") # Mejor usar el Scheduler Regular en FL
+DEFINE_float("child_lr_dec_rate", 0.95, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
 DEFINE_float("child_lr_min", 0.0005, "for lr schedule")
-DEFINE_integer("child_lr_T_0", 21, "for lr schedule")
+DEFINE_integer("child_lr_T_0", 20, "for lr schedule")
 DEFINE_integer("child_lr_T_mul", 1, "for lr schedule")
 DEFINE_integer("child_num_aggregate", None, "")
 DEFINE_integer("child_num_replicas", 1, "")
@@ -160,6 +171,7 @@ class Child(object):
                optim_algo=None,
                name="generic_model",
                seed=None,
+               learning_rate=None
               ):
     """
     Args:
@@ -188,6 +200,7 @@ class Child(object):
     self.valid_acc = None
     self.test_acc = None
     print("Build data ops")
+    # print(f"LEARNING RATE: {learning_rate}")
     with fw.device("/gpu:0"):
       # training data
       self.num_train_examples = np.shape(images["train"])[0]
@@ -197,11 +210,11 @@ class Child(object):
 
       self.learning_rate = LearningRate.new(
         FLAGS.child_lr_cosine,
-        FLAGS.child_lr,
+        learning_rate,
         lr_dec_start,
         FLAGS.child_lr_dec_every * self.num_train_batches,
         FLAGS.child_lr_dec_rate,
-        None,
+        0.1 * learning_rate, # dec_min
         FLAGS.child_lr_max,
         FLAGS.child_lr_min,
         FLAGS.child_lr_T_0,

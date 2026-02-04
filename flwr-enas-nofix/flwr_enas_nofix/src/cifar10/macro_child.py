@@ -52,7 +52,8 @@ class MacroChild(Child):
                seed = 42,
                child_weights = None,
                transfer = False,
-               mu = None
+               mu = None,
+               learning_rate=0.05
               ):
     super(self.__class__, self).__init__(
       images,
@@ -61,7 +62,8 @@ class MacroChild(Child):
       lr_dec_start=lr_dec_start,
       optim_algo=optim_algo,
       seed=seed,
-      name=name)
+      name=name,
+      learning_rate=learning_rate)
     FLAGS = flags.FLAGS
     self.whole_channels = FLAGS.controller_search_whole_channels
     self.lr_min = lr_min

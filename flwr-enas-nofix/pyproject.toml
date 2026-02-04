@@ -26,7 +26,7 @@ clientapp = "flwr_enas_nofix.client_app:app"
 [tool.flwr.app.config]
 num-server-rounds = 40
 num-nodes = 6
-local-epochs = 8
+local-epochs = 12
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"

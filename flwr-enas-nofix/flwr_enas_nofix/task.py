@@ -14,6 +14,9 @@ import time
 from datetime import datetime
 from absl import flags, app
 import flwr_enas_nofix.src.framework as fw
+import gc
+
+
 from flwr_enas_nofix.src import utils
 from flwr_enas_nofix.src.utils import Logger
 from flwr_enas_nofix.src.utils import DEFINE_boolean
@@ -26,7 +29,6 @@ from flwr_enas_nofix.src.cifar10.macro_controller import MacroController
 from flwr_enas_nofix.src.cifar10.macro_child import MacroChild
 from sklearn.model_selection import train_test_split
 from collections import Counter
-import tensorflow as tf
 import pickle
 import matplotlib.pyplot as plt
 import json
@@ -45,10 +47,6 @@ import pandas as pd
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 fds = None  # Cache FederatedDataset
-
-tf.random.set_seed(
-    42
-)
 
 toml_path = Path(__file__).parent.parent / "pyproject.toml"
 with toml_path.open("rb") as f:
@@ -123,7 +121,7 @@ def load_controller_weights(filepath):
     with open(filepath, 'rb') as f:
         weights = pickle.load(f)
 
-    return [tf.Variable(array, name=name, trainable=True) for name, array in weights]
+    return [fw.Variable(array, name=name, trainable=True) for name, array in weights]
 """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 
 
@@ -263,12 +261,13 @@ DEFINE_boolean("child_use_aux_heads", True, "")
 from memory_profiler import profile
     
 class Trainer:
-    def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None):
+    def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None, learning_rate=0.05):
         self.dataset = dataset
         self.arch = arch
         self.transfer = transfer
         self.actual_round = actual_round
         self.partition_id = partition_id
+        self.learning_rate = learning_rate
         self.ops = {}
         
     def get_ops(self):
@@ -292,10 +291,11 @@ class Trainer:
                 self.dataset["images"],
                 self.dataset["labels"],
                 clip_mode="norm",
-                optim_algo="momentum",
+                optim_algo="sgd",
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
-                mu = 0.0
+                mu = 0.0,
+                learning_rate=self.learning_rate
             )
         
         else:
@@ -303,10 +303,11 @@ class Trainer:
                 self.dataset["images"],
                 self.dataset["labels"],
                 clip_mode="norm",
-                optim_algo="momentum",
+                optim_algo="sgd",
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
-                mu = MU
+                mu = MU,
+                learning_rate=self.learning_rate
             )
         
         controller_ops = None
@@ -404,6 +405,8 @@ class Trainer:
     def train(self):
         # tf.config.run_functions_eagerly(True)
         # tf.data.experimental.enable_debug_mode()
+        gc.collect()
+        fw.clear_session()
         FLAGS = flags.FLAGS
         # images, labels = data["images"], data["labels"]
         self.get_ops()
