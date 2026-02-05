@@ -2,7 +2,7 @@ import pandas as pd
 
 # Ruta del archivo parquet
 ruta_archivo = "/workspace/flwr-enas-nofix/experiments/20260202_1/results/global_metrics.parquet"
-ruta_archivo2 = "/workspace/flwr-enas-nofix/experiments/20260203_1/results/global_metrics.parquet"
+ruta_archivo2 = "/workspace/flwr-enas-nofix/experiments/20260204_3/results/global_metrics.parquet"
 # Leer archivo parquet
 df = pd.read_parquet(ruta_archivo)
 df2 = pd.read_parquet(ruta_archivo2)

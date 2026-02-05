@@ -214,7 +214,7 @@ class Child(object):
         lr_dec_start,
         FLAGS.child_lr_dec_every * self.num_train_batches,
         FLAGS.child_lr_dec_rate,
-        0.1 * learning_rate, # dec_min
+        None, # dec_min
         FLAGS.child_lr_max,
         FLAGS.child_lr_min,
         FLAGS.child_lr_T_0,
