@@ -165,12 +165,14 @@ def load_data(partition_id, num_partitions):
     images, labels = {}, {}
     if fds is None:
         if NON_IID:
-            """
-            Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-            prevent empty or degenerate client datasets that can lead to unstable
-            training dynamics and inconsistent metric aggregation.
-            """
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=10000,
+            # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+            # prevent empty or degenerate client datasets that could cause unstable
+            # training dynamics or inconsistent metric aggregation. 
+            # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+            # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+            # heterogeneity and ensuring each client has enough samples for stable
+            # training and evaluation.
+            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
                                                self_balancing=True,
                                                seed=42,
                                                shuffle=True)
