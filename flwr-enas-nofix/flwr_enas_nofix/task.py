@@ -165,7 +165,15 @@ def load_data(partition_id, num_partitions):
     images, labels = {}, {}
     if fds is None:
         if NON_IID:
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label")
+            """
+            Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+            prevent empty or degenerate client datasets that can lead to unstable
+            training dynamics and inconsistent metric aggregation.
+            """
+            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=10000,
+                                               self_balancing=True,
+                                               seed=42,
+                                               shuffle=True)
         else:
             partitioner = IidPartitioner(num_partitions=num_partitions)
         fds = FederatedDataset(
