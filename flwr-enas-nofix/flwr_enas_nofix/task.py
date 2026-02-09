@@ -163,45 +163,80 @@ def load_data(partition_id, num_partitions):
     # Only initialize `FederatedDataset` once
     global fds
     images, labels = {}, {}
-    if fds is None:
-        if NON_IID:
-            # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-            # prevent empty or degenerate client datasets that could cause unstable
-            # training dynamics or inconsistent metric aggregation. 
-            # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
-            # across 6 clients for CIFAR-10, while still preserving strong Non-IID
-            # heterogeneity and ensuring each client has enough samples for stable
-            # training and evaluation.
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
-                                               self_balancing=True,
-                                               seed=42,
-                                               shuffle=True)
-        else:
-            partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
-            dataset=DATASET,
-            partitioners={"train": partitioner},
-        )
-        
-    train_set = fds.load_partition(partition_id, "train")
-    train_set.set_format("numpy")
 
-    # Shuffle train set
-    train_set = train_set.shuffle(seed=42)
-
-    test_set = fds.load_split(split="test")
-    test_set.set_format("numpy")
-    # Shuffle test set
-    test_set = test_set.shuffle(seed=42)
-    print("-" * 80)
-    print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-    print("Number of images Original Dataset TEST:", test_set.shape[0])
-    
     if DATASET_NAME == "cifar10":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
+    
+    
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
         y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
         
     elif DATASET_NAME == "cifar100":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
         y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
         
@@ -226,28 +261,38 @@ def load_data(partition_id, num_partitions):
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
     print("Number of images in dataset (Test):", images["test"].shape[0])
     
+    rows = []
+
     print("-" * 80)
     print("Label distribution:")
-    label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
+
     for split in ["train", "valid", "test"]:
         label_counts = Counter(labels[split])
         print(f"{split.upper()} set class distribution:")
         for label in sorted(label_counts):
-            print(f"  Class {label}: {label_counts[label]} samples")
-            label_dist[split].append(label_counts[label])
+            count = label_counts[label]
+            print(f"  Class {label}: {count} samples")
+            rows.append({
+                "exp_id": get_exp_id(),
+                "partition_id": partition_id,
+                "dataset_name": DATASET_NAME,
+                "split": split,
+                "class": int(label),
+                "count": int(count),
+            })
         print("-" * 40)
+
     print("-" * 80)
-    
-    df = pd.DataFrame(label_dist)
-    df["partition_id"] = partition_id
-    df["exp_id"] = get_exp_id()
-    df["dataset_name"] = DATASET_NAME
-    
+
+    df = pd.DataFrame(rows)
+
     df.to_parquet(
         get_label_distributions_dir() / f"client_{partition_id}.parquet",
         engine="pyarrow",
-        index=False
+        index=False,
     )
+
+    # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
     
     return {"images": images, "labels": labels}
     
