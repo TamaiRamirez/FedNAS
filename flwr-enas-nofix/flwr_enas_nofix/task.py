@@ -174,7 +174,7 @@ def load_data(partition_id, num_partitions):
                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
                 # heterogeneity and ensuring each client has enough samples for stable
                 # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
                                                 self_balancing=True,
                                                 seed=42,
                                                 shuffle=True)
@@ -583,7 +583,8 @@ class Trainer:
                 curr_time = datetime.now()
                 print(f"Time Running: {curr_time - start_time}")
                 print("-" * 80)
-
+            gc.collect()
+            fw.clear_session()
             if epoch >= FLAGS.num_epochs:
                 print("FINAL EVALUATION: ")
                 child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)

@@ -10,7 +10,7 @@ from flwr_enas_nofix.src.utils import LearningRate, ClipMode, Optimizer, Layered
 from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm
 
 
-DEFINE_integer("batch_size", 128, "")
+DEFINE_integer("batch_size", 32, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
 DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
