@@ -1,4 +1,5 @@
 import sys
+import os
 import tensorflow as tf
 
 from collections import defaultdict
@@ -6,12 +7,22 @@ from functools import partial
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
-  try:
-    # tf.config.set_visible_devices(gpus[0], 'GPU')
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*7)])
-  except RuntimeError as e:
-    print(e)
+  for gpu in gpus:
+    try:
+      # tf.config.set_visible_devices(gpus[0], 'GPU')
+      tf.config.experimental.set_memory_growth(gpu, True)
+      # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*4)])
+      # tf.config.set_logical_device_configuration(gpus[0],
+      #   [tf.config.LogicalDeviceConfiguration(memory_limit=3072)]  # MB
+      #   )
+    except RuntimeError as e:
+      print(e)
+
+tf.random.set_seed(
+  42
+)
+
+tf.config.optimizer.set_jit(False)  # Disable XLA
 
 class NameScope(object):
   singleton = None
@@ -68,6 +79,7 @@ class WeightRegistry(object):
 
 
 # TensorFlow 2
+clear_session = tf.keras.backend.clear_session
 GradientTape = tf.GradientTape
 Graph = tf.Graph
 Hook = tf.keras.callbacks.ModelCheckpoint #tf.estimator.CheckpointSaverHook
@@ -155,6 +167,8 @@ random_uniform = tf.random.uniform
 random_uniform_initializer = tf.random_uniform_initializer
 range = tf.range
 reduce_mean = tf.reduce_mean
+square = tf.square
+print = tf.print
 reduce_sum = tf.reduce_sum
 relu = tf.nn.relu
 

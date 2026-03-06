@@ -1,0 +1,171 @@
+# Informe técnico – Incidente “bad marshal data” en entorno Docker (Debian 12)
+
+## 1. Descripción del problema
+
+En el servidor con **Debian 12**, comenzaron a producirse múltiples errores del tipo:
+
+```
+bad marshal data (unknown type code)
+```
+
+El error aparecía principalmente al ejecutar aplicaciones relacionadas con aprendizaje federado dentro de contenedores Docker, especialmente en entornos que utilizaban Python junto con librerías de Machine Learning.
+
+Anteriormente, el mismo proyecto funcionaba correctamente sin presentar este tipo de incidencias.
+
+---
+
+## 2. Síntomas observados
+
+* Fallos al importar módulos Python.
+* Errores intermitentes durante la ejecución de contenedores Docker.
+* Mensajes explícitos de `bad marshal data`.
+* Presencia de múltiples archivos `.pyc` generados con diferentes versiones de Python.
+* Problemas de permisos al intentar eliminar archivos compilados.
+
+---
+
+## 3. Análisis técnico
+
+Tras la revisión del sistema se detectó:
+
+### 3.1 Mezcla de versiones de Python
+
+En el proyecto coexistían archivos compilados (`.pyc`) generados por distintas versiones de Python:
+
+* Python 3.8
+* Python 3.10
+* Python 3.11
+
+Los archivos compilados se encontraban en múltiples directorios `__pycache__`.
+
+Ejemplos detectados:
+
+* `module.cpython-38.pyc`
+* `module.cpython-310.pyc`
+* `module.cpython-311.pyc`
+
+El error `bad marshal data` se produce cuando el intérprete de Python intenta cargar un archivo `.pyc` generado con una versión diferente del intérprete en ejecución.
+
+### 3.2 Uso de volúmenes Docker
+
+El proyecto utilizaba volúmenes Docker para montar el código fuente del host dentro del contenedor. Esto provocó que:
+
+* Archivos compilados generados en otro equipo fueran reutilizados.
+* Archivos generados dentro del contenedor (como root) quedaran con permisos restringidos en el host.
+* Se mezclaran artefactos de distintos entornos de ejecución.
+
+### 3.3 Problema de permisos
+
+Muchos de los directorios `__pycache__` y archivos `.pyc` estaban creados por el usuario `root` (debido a ejecuciones previas en Docker).
+El usuario actual no tenía permisos para eliminarlos.
+
+---
+
+## 4. Causa raíz
+
+La causa del problema fue:
+
+> Presencia de archivos `.pyc` compilados con diferentes versiones de Python (3.8, 3.10 y 3.11) reutilizados en un entorno Docker que ejecutaba una versión distinta del intérprete.
+
+Esto generó incompatibilidad en el bytecode y produjo el error `bad marshal data`.
+
+No se trataba de un problema relacionado con:
+
+* Docker como motor de contenedores
+* Drivers NVIDIA
+* Librerías de Machine Learning
+* Framework de aprendizaje federado
+
+---
+
+## 5. Acciones correctivas realizadas
+
+### 5.1 Corrección de permisos
+
+Desde el usuario administrador se ejecutó:
+
+```bash
+chown -R <usuario>:<usuario> /home/<usuario>/FedNAS
+```
+
+Para recuperar el control de los archivos creados como `root`.
+
+---
+
+### 5.2 Eliminación completa de archivos compilados
+
+```bash
+find . -name "__pycache__" -type d -exec rm -rf {} +
+find . -name "*.pyc" -delete
+```
+
+Verificación posterior:
+
+```bash
+find . -name "*.pyc"
+```
+
+Sin resultados (correcto).
+
+---
+
+### 5.3 Limpieza completa del entorno Docker
+
+```bash
+docker compose down -v
+docker system prune -a --volumes
+docker compose build --no-cache
+docker compose up
+```
+
+Esto garantizó que no se reutilizaran capas antiguas ni bytecode previamente generado.
+
+---
+
+## 6. Medidas preventivas implementadas
+
+Para evitar que el problema vuelva a ocurrir:
+
+### 6.1 Exclusión de archivos compilados
+
+Se añadió a `.dockerignore` y `.gitignore`:
+
+```
+__pycache__/
+*.pyc
+```
+
+---
+
+### 6.2 Fijación explícita de versión de Python
+
+En el Dockerfile se definió una versión exacta:
+
+```dockerfile
+FROM python:3.11.7-slim
+```
+
+Evitando el uso de `latest` o versiones ambiguas.
+
+---
+
+### 6.3 Recomendación adicional
+
+Configurar los contenedores para que no se ejecuten como `root` o definir explícitamente el usuario en `docker-compose.yml`:
+
+```yaml
+user: "${UID}:${GID}"
+```
+
+---
+
+## 7. Conclusión
+
+El incidente fue causado por una incompatibilidad de bytecode Python debido a la coexistencia de archivos compilados generados por distintas versiones del intérprete.
+
+Tras la eliminación completa de los archivos `.pyc`, la corrección de permisos y la reconstrucción limpia de las imágenes Docker, el entorno volvió a funcionar correctamente.
+
+No se identificó ningún problema estructural en Docker, en los drivers de GPU ni en las librerías de Machine Learning.
+
+El sistema quedó estabilizado tras aplicar las medidas correctivas y preventivas descritas.
+

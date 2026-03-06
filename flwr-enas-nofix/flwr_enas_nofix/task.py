@@ -2,8 +2,8 @@
 
 import os
 
-import keras
-from keras import layers
+# import keras
+# from keras import layers
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 import numpy as np
@@ -14,6 +14,9 @@ import time
 from datetime import datetime
 from absl import flags, app
 import flwr_enas_nofix.src.framework as fw
+import gc
+
+
 from flwr_enas_nofix.src import utils
 from flwr_enas_nofix.src.utils import Logger
 from flwr_enas_nofix.src.utils import DEFINE_boolean
@@ -26,7 +29,6 @@ from flwr_enas_nofix.src.cifar10.macro_controller import MacroController
 from flwr_enas_nofix.src.cifar10.macro_child import MacroChild
 from sklearn.model_selection import train_test_split
 from collections import Counter
-import tensorflow as tf
 import pickle
 import matplotlib.pyplot as plt
 import json
@@ -38,14 +40,13 @@ from functools import lru_cache
 import tomli
 from pathlib import Path
 
+from experiment_api import get_experiment_dir, get_exp_id, get_label_distributions_dir
+import pandas as pd
+
 # Make TensorFlow log less verbose
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 fds = None  # Cache FederatedDataset
-
-tf.random.set_seed(
-    42
-)
 
 toml_path = Path(__file__).parent.parent / "pyproject.toml"
 with toml_path.open("rb") as f:
@@ -56,6 +57,39 @@ ALPHA = toml_config["tool"]["flwr"]["app"]["config"]["alpha"]
 DATASET = toml_config["tool"]["flwr"]["app"]["config"]["dataset"]
 DATASET_NAME = toml_config["tool"]["flwr"]["app"]["config"]["dataset_name"]
 LOCAL_EPOCHS = toml_config["tool"]["flwr"]["app"]["config"]["local-epochs"]
+AGG_METHOD = toml_config["tool"]["flwr"]["app"]["config"]["agg_method"]
+BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
+MU = toml_config["tool"]["flwr"]["app"]["config"]["mu"]
+NUM_ROUNDS = toml_config["tool"]["flwr"]["app"]["config"]["num-server-rounds"]
+NUM_NODES = toml_config["tool"]["flwr"]["app"]["config"]["num-nodes"]
+
+def write_experiment_txt():
+    exp_dir = get_experiment_dir()
+    path = exp_dir / "metadata_experiment.txt"
+
+    if path.exists():
+        return  # no lo sobrescribas
+
+    with open(path, "w") as f:
+        f.write(f"EXPERIMENT ID: {get_exp_id()}\n")
+        f.write(f"STATUS: VALID\n") # valid | failed | discarded | debug
+        f.write("REASON: N/A\n\n")
+        f.write(f"DATE: {datetime.now()}\n\n")
+        f.write("CONFIGURATION:\n")
+        f.write(f"\tDATASET_NAME: {DATASET_NAME}\n")
+        if NON_IID:
+            f.write(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+        
+        else:
+            f.write(f"\tDATA PARTITIONING: IID\n")
+        f.write(f"\tAGG_METHOD: {AGG_METHOD}\n")
+        f.write(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+        f.write(f"\tNUM_NODES: {NUM_NODES}\n")
+        if AGG_METHOD != "fedavg":
+            f.write(f"\tMU: {MU}\n")
+        f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+        f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+
 
 def smooth_curve(points, factor=0.8):
     points = np.array(points, dtype=np.float32)  # 👈 fuerza float
@@ -67,6 +101,43 @@ def smooth_curve(points, factor=0.8):
         else:
             smoothed_points.append(point)
     return smoothed_points
+
+# # Functions for controller
+# def save_controller_weights(variables, filepath):
+#     """
+#     Save tf.Variables as a list of (name, numpy_array) tuples using pickle.
+#     """
+#     # Convertir variables a un diccionario {name: array}
+#     weights_dict = {v.name.replace(":", "_"): v.numpy() for v in variables}
+
+#     # Crear carpeta si no existe
+#     filepath.parent.mkdir(parents=True, exist_ok=True)
+
+#     # Guardar en formato .npz (comprimido)
+#     np.savez_compressed(filepath, **weights_dict)
+#     # print(f"[SAVE] Controller weights saved with names to: {filepath}")
+
+# def load_controller_weights(filepath):
+#     """
+#     Load a list of (name, numpy_array) tuples and restore as tf.Variables with names.
+#     """
+#     # Abrir archivo .npz
+#     with np.load(filepath) as data:
+#         # Convertir cada array a tf.Variable
+#         variables = [fw.Variable(data[key], name=key.replace("_", ":"), trainable=True)
+#                      for key in data.files]
+
+#     # Borrar archivo
+#     try:
+#         os.remove(filepath)
+#     except FileNotFoundError:
+#         pass
+
+#     # Liberar memoria
+#     gc.collect()
+
+#     return variables
+
 
 # Functions for controller
 def save_controller_weights(variables, filepath):
@@ -85,9 +156,24 @@ def load_controller_weights(filepath):
     """
     with open(filepath, 'rb') as f:
         weights = pickle.load(f)
+    
+    # Borrar archivo
+    # try:
+    #     os.remove(filepath)
+    # except FileNotFoundError:
+    #     pass
 
-    return [tf.Variable(array, name=name, trainable=True) for name, array in weights]
+    # Liberar memoria
+    # gc.collect()
+
+    # print(f"WEIGHTS \n:{weights}")
+
+    return weights
 """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
+
 # Functions for child architectures
 def weights_to_ndarrays(data_dict, keys):
     """
@@ -98,12 +184,11 @@ def weights_to_ndarrays(data_dict, keys):
     """
     arrays = [data_dict[key] for key in keys]
     
-    try:
-        stacked_array = np.stack(arrays)
-    except ValueError:
-        # Fall back to np.array if shapes don't match
-        stacked_array = np.array(arrays, dtype=object)
-
+    # try:
+    #     stacked_array = np.stack(arrays)
+    # except ValueError:
+    #     # Fall back to np.array if shapes don't match
+    #     stacked_array = np.array(arrays, dtype=object)
     return arrays
 
 import numpy as np
@@ -122,43 +207,93 @@ def ndarray_to_weights(array_data, keys):
     return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
 
 
-def load_data(partition_id, num_partitions, alpha=0.5):
+def load_data(partition_id, num_partitions):
     # Download and partition dataset
     # Only initialize `FederatedDataset` once
     global fds
     images, labels = {}, {}
-    if fds is None:
-        if NON_IID:
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=alpha, partition_by="label")
-        else:
-            partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
-            dataset=DATASET,
-            partitioners={"train": partitioner},
-        )
+
+    if DATASET_NAME == "cifar10":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
+    
+    
+        X_train = np.concatenate((train_set["img"], train_set["img"]), axis=0) 
+        y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
         
-    train_set = fds.load_partition(partition_id, "train")
-    train_set.set_format("numpy")
+        
+    elif DATASET_NAME == "cifar100":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
 
-    # Shuffle train set
-    train_set = train_set.shuffle(seed=42)
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
 
-    test_set = fds.load_split(split="test")
-    test_set.set_format("numpy")
-    # Shuffle test set
-    test_set = test_set.shuffle(seed=42)
-    print("-" * 80)
-    print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-    print("Number of images Original Dataset TEST:", test_set.shape[0])
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
+        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
+        y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
+        
+    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-
-    X_train, X_valid, y_train, y_valid = train_test_split(train_set["img"], train_set["label"], test_size=0.2, random_state=42, stratify=train_set["label"])
-
-    X_train = np.concatenate((X_train, X_train), axis=0)
-    y_train = np.concatenate((y_train, y_train), axis=0)
-
-    images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
-    images["valid"], labels["valid"] =(X_valid / 255.0).astype("float32"), np.int32(y_valid)
+    images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+    images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
@@ -169,39 +304,52 @@ def load_data(partition_id, num_partitions, alpha=0.5):
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)
     
-    images["test"] = (test_set["img"] / 255.0).astype("float32")
+    # print(test_set["img"])
+    
+    images["test"] = np.float32(test_set["img"]) / 255.0
     images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
     print("Number of images in dataset (Test):", images["test"].shape[0])
     
+    rows = []
+
     print("-" * 80)
     print("Label distribution:")
-    label_dist = {"train": [], "valid": [], "test": []} # Save the labels distribution
+
     for split in ["train", "valid", "test"]:
         label_counts = Counter(labels[split])
         print(f"{split.upper()} set class distribution:")
         for label in sorted(label_counts):
-            print(f"  Class {label}: {label_counts[label]} samples")
-            label_dist[split].append({str(label): label_counts[label]})
+            count = label_counts[label]
+            print(f"  Class {label}: {count} samples")
+            rows.append({
+                "exp_id": get_exp_id(),
+                "partition_id": partition_id,
+                "dataset_name": DATASET_NAME,
+                "split": split,
+                "class": int(label),
+                "count": int(count),
+            })
         print("-" * 40)
+
     print("-" * 80)
 
-    if NON_IID:
-        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/Non-IID/{ALPHA}/client_{partition_id}_data"
-        # Create directories if they do not exist
-        os.makedirs(save_path, exist_ok=True)
-        with open(f"{save_path}/class_dist.json", "w") as f:
-            json.dump(label_dist, f, indent=4)
-    else:
-        save_path=f"{PROJECT_PATH}/{DATASET_NAME}/IID/client_{partition_id}_data"
-        # Create directories if they do not exist
-        os.makedirs(save_path, exist_ok=True)
-        with open(f"{save_path}/class_dist.json", "w") as f:
-            json.dump(label_dist, f, indent=4)
-    return {"images": images, "labels": labels}
+    df = pd.DataFrame(rows)
 
+    df.to_parquet(
+        get_label_distributions_dir() / f"client_{partition_id}.parquet",
+        engine="pyarrow",
+        index=False,
+    )
+
+    # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
+    
+    return {"images": images, "labels": labels}
+    
+
+        
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "data/cifar10", "")
@@ -216,16 +364,15 @@ DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
 DEFINE_integer("num_epochs", LOCAL_EPOCHS, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
-
-from memory_profiler import profile
     
 class Trainer:
-    def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None):
+    def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None, learning_rate=0.05):
         self.dataset = dataset
         self.arch = arch
         self.transfer = transfer
         self.actual_round = actual_round
         self.partition_id = partition_id
+        self.learning_rate = learning_rate
         self.ops = {}
         
     def get_ops(self):
@@ -242,14 +389,31 @@ class Trainer:
         ChildClass = MacroChild
 
         # Initialize child model
-        child_model = ChildClass(
-            self.dataset["images"],
-            self.dataset["labels"],
-            clip_mode="norm",
-            optim_algo="momentum",
-            child_weights=self.arch["child_weights"],
-            transfer=self.transfer
-        )
+
+        if AGG_METHOD == "fedavg":
+
+            child_model = ChildClass(
+                self.dataset["images"],
+                self.dataset["labels"],
+                clip_mode="norm",
+                optim_algo="sgd",
+                child_weights=self.arch["child_weights"],
+                transfer=self.transfer,
+                mu = 0.0,
+                learning_rate=self.learning_rate
+            )
+        
+        else:
+            child_model = ChildClass(
+                self.dataset["images"],
+                self.dataset["labels"],
+                clip_mode="norm",
+                optim_algo="sgd",
+                child_weights=self.arch["child_weights"],
+                transfer=self.transfer,
+                mu = MU,
+                learning_rate=self.learning_rate
+            )
         
         controller_ops = None
         dataset_valid_shuffle = None
@@ -346,8 +510,32 @@ class Trainer:
     def train(self):
         # tf.config.run_functions_eagerly(True)
         # tf.data.experimental.enable_debug_mode()
+        # gc.collect()
+        # fw.clear_session()
         FLAGS = flags.FLAGS
         # images, labels = data["images"], data["labels"]
+        if self.actual_round == 1:
+            print("*" * 80)
+            print("CONFIGURATION:")
+            print()
+            print(f"EXPERIMENT ID: {get_exp_id()}\n")
+            print(f"STATUS: VALID\n") # valid | failed | discarded | debug
+            print("REASON: N/A\n\n")
+            print(f"DATE: {datetime.now()}\n\n")
+            print(f"\tDATASET_NAME: {DATASET_NAME}\n")
+            if NON_IID:
+                print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+            
+            else:
+                print(f"\tDATA PARTITIONING: IID\n")
+            print(f"\tAGG_METHOD: {AGG_METHOD}\n")
+            print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+            print(f"\tNUM_NODES: {NUM_NODES}\n")
+            if AGG_METHOD != "fedavg":
+                print(f"\tMU: {MU}\n")
+            print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+            print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+            print("*" * 80)
         self.get_ops()
         batch_iterator = None
 
@@ -431,7 +619,7 @@ class Trainer:
                 # child_test_acc = self.ops["eval_func"]("test", child_test_logits, test_labels_batch,verbose=False)
                 print(f"train_accuracy: {sum(child_train_accs)/len(child_train_accs)}")
                 print(f"train_loss: {sum(child_train_lss)/len(child_train_lss)}")
-                child_valid_acc, child_valid_loss = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
+                child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
                 
                 child_train_accuracies.append(sum(child_train_accs)/len(child_train_accs))
                 child_train_losses.append(sum(child_train_lss)/len(child_train_lss))
@@ -469,60 +657,23 @@ class Trainer:
                 print("-" * 80)
 
             if epoch >= FLAGS.num_epochs:
-                print("Test Accuracy: ")
-                child_test_acc, child_test_loss = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
-
-                # # Directorio de guardado
-                # plot_dir = f"{PROJECT_PATH}/plots/client_{self.partition_id}/round_{self.actual_round}"
-                # os.makedirs(plot_dir, exist_ok=True)
-                
-                # # Gráfico de precisión (accuracy)
-                # plt.figure()
-                # plt.plot(smooth_curve(child_train_accuracies), label="Child Train Accuracy")
-                # plt.plot(smooth_curve(child_valid_accuracies), label="Child Validation Accuracy")
-                # plt.plot(smooth_curve(child_train_losses), label="Child Train Loss")
-                # plt.plot(smooth_curve(child_valid_losses), label="Child Validation Loss")
-                # # Línea horizontal punteada en y=1
-                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                # plt.title(f"Client {self.partition_id} - Child Metrics (Round {self.actual_round})")
-                # plt.xlabel("Epoch")
-                # plt.ylabel("Accuracy")
-                # # plt.ylim(0, 2)
-                # plt.legend()
-                # plt.grid(True)
-                # plt.tight_layout()
-                # plt.savefig(f"{plot_dir}/child_metrics.png")
-                # plt.close()
-                
-                # # Gráfico de precisión (accuracy)
-                # plt.figure()
-                # plt.plot(smooth_curve(controller_accuracies), label="Controller Accuracy")
-                # plt.plot(smooth_curve(controller_losses), label="Controller Loss")
-                # # Línea horizontal punteada en y=1
-                # plt.axhline(y=1, color='r', linestyle='--', linewidth=1.5)
-                # plt.title(f"Client {self.partition_id} - Controller Metrics (Round {self.actual_round})")
-                # plt.xlabel("Epoch")
-                # plt.ylabel("Accuracy")
-                # # plt.ylim(0, 2)
-                # plt.legend()
-                # plt.grid(True)
-                # plt.tight_layout()
-                # plt.savefig(f"{plot_dir}/controller_metrics.png")
-                # plt.close()
+                print("FINAL EVALUATION: ")
+                child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
+                child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
                 
                 break
-
+        
+        print("-" * 80)
+        curr_time = datetime.now()
+        print(f"Time Running: {curr_time - start_time}")
+        print("-" * 80)
         return {
-                "child_train_accuracies": child_train_accuracies,
-                "child_valid_accuracies": child_valid_accuracies,
-                "child_train_losses": child_train_losses,
-                "child_valid_losses": child_valid_losses,
-                "controller_accuracies": controller_accuracies,
-                "controller_losses": controller_losses,
                 "child_valid_acc": float(child_valid_acc),
                 "child_valid_loss": float(child_valid_loss),
+                "child_valid_f1_score": float(child_valid_f1_score),
                 "child_test_acc": float(child_test_acc),
                 "child_test_loss": float(child_test_loss),
+                "child_test_f1_score": float(child_test_f1_score),
                 "child_weights": self.ops["child"]["weights"],
                 "child_trainable_variables": self.ops['child']['trainable_variables'],
                 "controller_trainable_variables": self.ops["controller"]["trainable_variables"]

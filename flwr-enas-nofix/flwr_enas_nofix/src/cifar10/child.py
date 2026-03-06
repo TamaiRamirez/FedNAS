@@ -10,20 +10,22 @@ from flwr_enas_nofix.src.utils import LearningRate, ClipMode, Optimizer, Layered
 from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm
 
 
-DEFINE_integer("batch_size", 128, "")
+DEFINE_integer("batch_size", 64, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
 DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 0.90, "")
 DEFINE_float("child_l2_reg", 0.00025, "")
-DEFINE_float("child_lr", 0.05, "")
-DEFINE_integer("child_lr_dec_every", 100, "")
-DEFINE_boolean("child_lr_cosine", True, "Use cosine lr schedule")
-DEFINE_float("child_lr_dec_rate", 0.1, "")
+# DEFINE_float("child_lr", 0.05, "")
+
+
+DEFINE_integer("child_lr_dec_every", 100, "") # Sin Scheduler local
+DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule") # Mejor usar el Scheduler Regular en FL
+DEFINE_float("child_lr_dec_rate", 0.95, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
 DEFINE_float("child_lr_min", 0.0005, "for lr schedule")
-DEFINE_integer("child_lr_T_0", 21, "for lr schedule")
+DEFINE_integer("child_lr_T_0", 20, "for lr schedule")
 DEFINE_integer("child_lr_T_mul", 1, "for lr schedule")
 DEFINE_integer("child_num_aggregate", None, "")
 DEFINE_integer("child_num_replicas", 1, "")
@@ -160,6 +162,7 @@ class Child(object):
                optim_algo=None,
                name="generic_model",
                seed=None,
+               learning_rate=None
               ):
     """
     Args:
@@ -188,6 +191,7 @@ class Child(object):
     self.valid_acc = None
     self.test_acc = None
     print("Build data ops")
+    # print(f"LEARNING RATE: {learning_rate}")
     with fw.device("/gpu:0"):
       # training data
       self.num_train_examples = np.shape(images["train"])[0]
@@ -197,11 +201,11 @@ class Child(object):
 
       self.learning_rate = LearningRate.new(
         FLAGS.child_lr_cosine,
-        FLAGS.child_lr,
+        learning_rate,
         lr_dec_start,
         FLAGS.child_lr_dec_every * self.num_train_batches,
         FLAGS.child_lr_dec_rate,
-        None,
+        None, # dec_min
         FLAGS.child_lr_max,
         FLAGS.child_lr_min,
         FLAGS.child_lr_T_0,
@@ -330,7 +334,9 @@ class Child(object):
     total_acc = 0.0
     total_loss = 0.0
     total_exp = 0
-
+    total_f1 = 0.0
+    all_preds = []
+    all_labels = []
     for batch_id, (images_batch, labels_batch) in enumerate(dataset_np):
       logits = model(images_batch)
 
@@ -343,7 +349,12 @@ class Child(object):
       loss_per_sample = fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels_batch)
       batch_loss = fw.reduce_sum(loss_per_sample)
       total_loss += batch_loss
-
+      
+      # F1-SCORE needs all preds and labels in one
+      y_pred = fw.to_int32(fw.argmax(logits, axis=1))
+      all_preds.append(y_pred.numpy())
+      all_labels.append(labels_batch)
+      
       total_exp += batch_size
 
       if verbose:
@@ -354,11 +365,20 @@ class Child(object):
 
     avg_acc = total_acc / total_exp
     avg_loss = total_loss / total_exp
-
+    
+    # F1-SCORE
+    from sklearn.metrics import f1_score
+    all_preds = np.concatenate(all_preds)
+    all_labels = np.concatenate(all_labels)
+    # print(f"LABELS: {all_labels} \n -> {type(all_labels)}")
+    # print(f"LABELS: {all_preds} \n -> {type(all_preds)}")
+    avg_f1 = f1_score(all_labels, all_preds, average="macro")
+    
     print(f"{eval_set}_accuracy: {avg_acc:.4f}")
     print(f"{eval_set}_loss: {avg_loss:.4f}")
+    print(f"{eval_set}_f1-score: {avg_f1:.4f}")
 
-    return avg_acc, avg_loss
+    return avg_acc, avg_loss, avg_f1
 
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")
@@ -428,43 +448,43 @@ class Child(object):
       bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [fw.relu, layer2, bn]
   
-  # NOTA: AÑADIDO MAXPOOLING Y AVG POOLING
-  class MaxPool3x3(LayeredModel):
-    def __init__(self, scope: str, data_format):
-        def layer(x):
-            # Convert to channels_last if needed
-            if data_format.name == "NCHW":
-                x = tf.transpose(x, [0, 2, 3, 1])
-            x = max_pool2d(
-                pool_size=3,
-                strides=1,
-                padding="same"
-            )(x)
-            # Convert back if needed
-            if data_format.name == "NCHW":
-                x = tf.transpose(x, [0, 3, 1, 2])
-            return x
+  # NOTA: AÑADIDO MAXPOOLING Y AVG POOLING (ni falta que hace, ya existe la clase POOL_BRANCH en Macro Child)
+  # class MaxPool3x3(LayeredModel):
+  #   def __init__(self, scope: str, data_format):
+  #       def layer(x):
+  #           # Convert to channels_last if needed
+  #           if data_format.name == "NCHW":
+  #               x = fw.transpose(x, [0, 2, 3, 1])
+  #           x = fw.max_pool2d(
+  #               pool_size=3,
+  #               strides=1,
+  #               padding="same"
+  #           )(x)
+  #           # Convert back if needed
+  #           if data_format.name == "NCHW":
+  #               x = fw.transpose(x, [0, 3, 1, 2])
+  #           return x
 
-        self.layers = [layer]
+  #       self.layers = [layer]
 
 
-  class AvgPool3x3(LayeredModel):
-      def __init__(self, scope: str, data_format):
-          def layer(x):
-              # Convert to channels_last if needed
-              if data_format.name == "NCHW":
-                  x = tf.transpose(x, [0, 2, 3, 1])
-              x = avg_pool2d(
-                  pool_size=3,
-                  strides=1,
-                  padding="same"
-              )(x)
-              # Convert back if needed
-              if data_format.name == "NCHW":
-                  x = tf.transpose(x, [0, 3, 1, 2])
-              return x
+  # class AvgPool3x3(LayeredModel):
+  #     def __init__(self, scope: str, data_format):
+  #         def layer(x):
+  #             # Convert to channels_last if needed
+  #             if data_format.name == "NCHW":
+  #                 x = fw.transpose(x, [0, 2, 3, 1])
+  #             x = fw.avg_pool2d(
+  #                 pool_size=3,
+  #                 strides=1,
+  #                 padding="same"
+  #             )(x)
+  #             # Convert back if needed
+  #             if data_format.name == "NCHW":
+  #                 x = fw.transpose(x, [0, 3, 1, 2])
+  #             return x
 
-          self.layers = [layer]
+  #         self.layers = [layer]
 
 
   class StemConv(LayeredModel):
