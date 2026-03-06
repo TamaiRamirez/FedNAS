@@ -16,7 +16,7 @@ DEFINE_boolean("controller_search_whole_channels", True, "")
 DEFINE_float("controller_skip_target", 0.4, "")
 DEFINE_float("controller_skip_weight", 0.8, "")
 
-import psutil
+# import psutil
 import gc
 import os
 gc.enable()
@@ -82,14 +82,22 @@ class MacroController(Controller):
 
     self._create_params()
     
-    if transfer:
-      del self.w_lstm, self.g_emb, self.w_emb, self.w_soft
-      self.w_lstm = []
-      self.w_lstm.append(fw.Variable(controller_weights[0].value(), name=controller_weights[0].name, trainable=True))
-      self.g_emb = fw.Variable(controller_weights[1].value(), name=controller_weights[1].name, trainable=True)
-      self.w_emb = fw.Variable(controller_weights[2].value(), name=controller_weights[2].name, trainable=True)
-      self.w_soft = fw.Variable(controller_weights[3].value(), name=controller_weights[3].name, trainable=True)
+    # if transfer:
+    #   del self.w_lstm, self.g_emb, self.w_emb, self.w_soft
+    #   self.w_lstm = []
+    #   self.w_lstm.append(fw.Variable(controller_weights[0].value(), name=controller_weights[0].name, trainable=True))
+    #   self.g_emb = fw.Variable(controller_weights[1].value(), name=controller_weights[1].name, trainable=True)
+    #   self.w_emb = fw.Variable(controller_weights[2].value(), name=controller_weights[2].name, trainable=True)
+    #   self.w_soft = fw.Variable(controller_weights[3].value(), name=controller_weights[3].name, trainable=True)
     
+    if transfer:
+      weights = dict(controller_weights)
+    #   print(f"WEIGHTS LOADED \n:{weights}")
+      self.w_lstm[0].assign(weights['controller/lstm/layer_0/w:0'])
+      self.g_emb.assign(weights['controller/g_emb:0'])
+      self.w_emb.assign(weights['controller/emb/w:0'])
+      self.w_soft.assign(weights['controller/softmax/w:0'])
+
     self.sampler_logit = MacroController.SamplerLogit(self.num_layers, self.num_branches, self.out_filters, self.temperature, self.tanh_constant, self.lstm_size, self.lstm_num_layers, self.search_for, self.search_whole_channels, self.w_lstm, self.w_soft, self.w_emb, self.w_attn_1, self.w_attn_2, self.v_attn, self.g_emb)
     self.sample_arc = MacroController.SampleArc(self.num_layers, self.num_branches, self.search_whole_channels)
     self.sample_log_prob = MacroController.LogProbabilities(self.num_layers, self.num_branches, self.search_whole_channels)

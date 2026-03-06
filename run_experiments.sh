@@ -1,36 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ulimit -c 0
+
 #######################################
 # Paths
 #######################################
 BASE_DIR="/workspace/flwr-enas-nofix"
 PROJECT_TOML="$BASE_DIR/pyproject.toml"
+# NODES_SCRIPT="./flwr_super_nodes_4090.sh"
 
 #######################################
-# Flower / Python / Tensorflow (CRÍTICO PARA DOCKER)
+# Environment
 #######################################
 export RICH_DISABLE=1
 export PYTHONUNBUFFERED=1
-export TF_NUM_INTRAOP_THREADS=1
-export TF_NUM_INTEROP_THREADS=1
-export OMP_NUM_THREADS=1
+export TF_CPP_MIN_LOG_LEVEL=3
+export ABSL_LOGGING_MIN_LEVEL=3
+export TF_FORCE_GPU_ALLOW_GROWTH=true
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 #######################################
 # Experiment configurations
 #######################################
-NON_IID_LIST=(false true true true)
-ALPHA_LIST=(0.0 1.0 0.5 0.1)
-AGG_LIST=("fedavg" "fedavg" "fedavg" "fedavg")
-MU_LIST=(0.0 0.0 0.0 0.0)
+NON_IID_LIST=(false)
+ALPHA_LIST=(0.0)
+AGG_LIST=("fedavg")
+MU_LIST=(0.0)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
 #######################################
-# Runtime PIDs
+# Runtime PID
 #######################################
-SUPERLINK_PID=""
-SERVER_PID=""
+NODES_PID=""
 
 #######################################
 # Functions
@@ -44,35 +46,9 @@ update_project_toml() {
     "$PROJECT_TOML"
 }
 
-cleanup() {
-  echo "🛑 Cleanup"
-
-  # [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
-  # [[ -n "${SUPERLINK_PID:-}" ]] && kill "$SUPERLINK_PID" 2>/dev/null || true
-
-  # pkill -9 flower-supernode 2>/dev/null || true
-  # pkill -9 flower-superlink 2>/dev/null || true
-  # pkill -9 -f "flwr run" 2>/dev/null || true
-
-  # Matar servidor y todos sus hijos
-  if [[ -n "${SERVER_PID:-}" ]]; then
-      kill -- -"$SERVER_PID" 2>/dev/null || true
-  fi
-
-  [[ -n "${SUPERLINK_PID:-}" ]] && kill -- -"$SUPERLINK_PID" 2>/dev/null || true
-  [[ -n "${SUPERNODES_PID:-}" ]] && kill -- -"$SUPERNODES_PID" 2>/dev/null || true
-
-
-  # Matar superlink y supernodes
-  pkill -9 -f flower-supernode 2>/dev/null || true
-  pkill -9 -f flower-superlink 2>/dev/null || true
-  pkill -9 -f "flwr run" 2>/dev/null || true
-}
-
-trap cleanup SIGINT SIGTERM
 
 #######################################
-# Main loop
+# Main experiment loop
 #######################################
 for ((i=0; i<NUM_EXPS; i++)); do
   echo "========================================"
@@ -91,44 +67,24 @@ for ((i=0; i<NUM_EXPS; i++)); do
   EXP_DIR=$(./create_experiment.sh | tail -n 1)
   LOGDIR="$EXP_DIR/logs"
 
-  #######################################
-  # Superlink
-  #######################################
-  echo "🔗 Launching flower-superlink"
-  setsid flower-superlink --insecure > "$LOGDIR/superlink.log" 2>&1 &
-  SUPERLINK_PID=$!
-  sleep 3
+  echo "📁 Experiment directory: $EXP_DIR"
 
   #######################################
-  # Supernodes
+  # Run server
   #######################################
-  echo "🖥️ Launching supernodes"
-  setsid ./flwr_super_nodes_4090.sh &
-  SUPERNODES_PID=$!
-  sleep 5
+  echo "🚀 Launching Flower server"
+  
+  if ! flwr run "$BASE_DIR" local-deployment --stream 2>&1 | tee "$LOGDIR/server.log"; then
+    echo "❌ Experiment $((i+1)) failed"
+    continue
+  fi
 
-  #######################################
-  # Server
-  #######################################
-  echo "🚀 Launching server Flower"
-  flwr run "$BASE_DIR" local-deployment \
-      > "$LOGDIR/server.log" 2>&1 &
-  SERVER_PID=$!
-  sleep 2
-
-  echo "🧠 Executing experiment"
-  echo "👉 Ctrl+C to stop the experiment"
-
-  #######################################
-  # Safe wait loop (NO wait)
-  #######################################
-  while kill -0 "$SERVER_PID" 2>/dev/null; do
-    sleep 1
-  done
-
-  cleanup
-  echo "✅ Experiment finished"
+  echo "✅ Experiment $((i+1)) finished"
+  
+  # Cleanup controller weights
+  rm -rf "$EXP_DIR/controller_weights" 2>/dev/null || true
+  
   sleep 2
 done
 
-echo "🎉 All experiments completed succesfully!"
+echo "🎉 All experiments completed!"

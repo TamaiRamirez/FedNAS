@@ -13,7 +13,7 @@ from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm, BatchNormWithMask
 from flwr_enas_nofix.src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
 import copy
 
-import psutil
+# import psutil
 import gc
 import os
 gc.enable()

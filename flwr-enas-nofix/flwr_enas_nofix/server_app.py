@@ -9,18 +9,7 @@ from typing import List, Tuple
 
 from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt
 
-import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
-os.environ["TF_NUM_INTEROP_THREADS"] = "1"
-
 import tensorflow as tf
-from tensorflow.keras import backend as K
-import gc
-gpus = tf.config.list_physical_devices("GPU")
-if gpus:
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
 
 def fit_config(rnd: int):
     return {"round": rnd}
@@ -64,8 +53,6 @@ def server_fn(context: Context):
             proximal_mu = MU
         )
     config = ServerConfig(num_rounds=num_rounds)
-    K.clear_session()
-    gc.collect()
     return ServerAppComponents(strategy=strategy, config=config)
 
 # Create ServerApp

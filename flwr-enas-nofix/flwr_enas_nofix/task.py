@@ -2,8 +2,8 @@
 
 import os
 
-import keras
-from keras import layers
+# import keras
+# from keras import layers
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 import numpy as np
@@ -102,14 +102,50 @@ def smooth_curve(points, factor=0.8):
             smoothed_points.append(point)
     return smoothed_points
 
+# # Functions for controller
+# def save_controller_weights(variables, filepath):
+#     """
+#     Save tf.Variables as a list of (name, numpy_array) tuples using pickle.
+#     """
+#     # Convertir variables a un diccionario {name: array}
+#     weights_dict = {v.name.replace(":", "_"): v.numpy() for v in variables}
+
+#     # Crear carpeta si no existe
+#     filepath.parent.mkdir(parents=True, exist_ok=True)
+
+#     # Guardar en formato .npz (comprimido)
+#     np.savez_compressed(filepath, **weights_dict)
+#     # print(f"[SAVE] Controller weights saved with names to: {filepath}")
+
+# def load_controller_weights(filepath):
+#     """
+#     Load a list of (name, numpy_array) tuples and restore as tf.Variables with names.
+#     """
+#     # Abrir archivo .npz
+#     with np.load(filepath) as data:
+#         # Convertir cada array a tf.Variable
+#         variables = [fw.Variable(data[key], name=key.replace("_", ":"), trainable=True)
+#                      for key in data.files]
+
+#     # Borrar archivo
+#     try:
+#         os.remove(filepath)
+#     except FileNotFoundError:
+#         pass
+
+#     # Liberar memoria
+#     gc.collect()
+
+#     return variables
+
+
 # Functions for controller
 def save_controller_weights(variables, filepath):
     """
     Save tf.Variables as a list of (name, numpy_array) tuples using pickle.
     """
     weights = [(v.name, v.numpy()) for v in variables]
-    # os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    filepath.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, 'wb') as f:
         pickle.dump(weights, f)
     # print(f"[SAVE] Controller weights saved with names to: {filepath}")
@@ -120,8 +156,21 @@ def load_controller_weights(filepath):
     """
     with open(filepath, 'rb') as f:
         weights = pickle.load(f)
+    
+    # Borrar archivo
+    # try:
+    #     os.remove(filepath)
+    # except FileNotFoundError:
+    #     pass
 
-    return [fw.Variable(array, name=name, trainable=True) for name, array in weights]
+    # Liberar memoria
+    # gc.collect()
+
+    # print(f"WEIGHTS \n:{weights}")
+
+    return weights
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
 """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 
 
@@ -200,8 +249,9 @@ def load_data(partition_id, num_partitions):
         print("Number of images Original Dataset TEST:", test_set.shape[0])
     
     
-        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
-        y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+        X_train = np.concatenate((train_set["img"], train_set["img"]), axis=0) 
+        y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
+        
         
     elif DATASET_NAME == "cifar100":
         if fds is None:
@@ -242,8 +292,8 @@ def load_data(partition_id, num_partitions):
         
     X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-    images["train"], labels["train"] = (X_train / 255.0).astype("float32"), np.int32(y_train)
-    images["valid"], labels["valid"] = (X_valid / 255.0).astype("float32"), np.int32(y_valid)
+    images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+    images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
     
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
     std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
@@ -254,7 +304,9 @@ def load_data(partition_id, num_partitions):
     images["train"] = np.float32((images["train"] - mean) / std)
     images["valid"] = np.float32((images["valid"] - mean) / std)
     
-    images["test"] = (test_set["img"] / 255.0).astype("float32")
+    # print(test_set["img"])
+    
+    images["test"] = np.float32(test_set["img"]) / 255.0
     images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
@@ -312,8 +364,6 @@ DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
 DEFINE_integer("num_epochs", LOCAL_EPOCHS, "How many epochs to train")
 DEFINE_boolean("child_use_aux_heads", True, "")
-
-from memory_profiler import profile
     
 class Trainer:
     def __init__(self, dataset=None, arch=None, transfer=False, actual_round=None, partition_id=None, learning_rate=0.05):
@@ -460,10 +510,32 @@ class Trainer:
     def train(self):
         # tf.config.run_functions_eagerly(True)
         # tf.data.experimental.enable_debug_mode()
-        gc.collect()
-        fw.clear_session()
+        # gc.collect()
+        # fw.clear_session()
         FLAGS = flags.FLAGS
         # images, labels = data["images"], data["labels"]
+        if self.actual_round == 1:
+            print("*" * 80)
+            print("CONFIGURATION:")
+            print()
+            print(f"EXPERIMENT ID: {get_exp_id()}\n")
+            print(f"STATUS: VALID\n") # valid | failed | discarded | debug
+            print("REASON: N/A\n\n")
+            print(f"DATE: {datetime.now()}\n\n")
+            print(f"\tDATASET_NAME: {DATASET_NAME}\n")
+            if NON_IID:
+                print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+            
+            else:
+                print(f"\tDATA PARTITIONING: IID\n")
+            print(f"\tAGG_METHOD: {AGG_METHOD}\n")
+            print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+            print(f"\tNUM_NODES: {NUM_NODES}\n")
+            if AGG_METHOD != "fedavg":
+                print(f"\tMU: {MU}\n")
+            print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+            print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+            print("*" * 80)
         self.get_ops()
         batch_iterator = None
 
@@ -583,15 +655,18 @@ class Trainer:
                 curr_time = datetime.now()
                 print(f"Time Running: {curr_time - start_time}")
                 print("-" * 80)
-            gc.collect()
-            fw.clear_session()
+
             if epoch >= FLAGS.num_epochs:
                 print("FINAL EVALUATION: ")
                 child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
                 child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
                 
                 break
-
+        
+        print("-" * 80)
+        curr_time = datetime.now()
+        print(f"Time Running: {curr_time - start_time}")
+        print("-" * 80)
         return {
                 "child_valid_acc": float(child_valid_acc),
                 "child_valid_loss": float(child_valid_loss),

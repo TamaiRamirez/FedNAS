@@ -1,4 +1,5 @@
 import sys
+import os
 import tensorflow as tf
 
 from collections import defaultdict
@@ -6,15 +7,16 @@ from functools import partial
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
-  try:
-    # tf.config.set_visible_devices(gpus[0], 'GPU')
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-    # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*4)])
-    tf.config.set_logical_device_configuration(gpus[0],
-      [tf.config.LogicalDeviceConfiguration(memory_limit=3072)]  # MB
-      )
-  except RuntimeError as e:
-    print(e)
+  for gpu in gpus:
+    try:
+      # tf.config.set_visible_devices(gpus[0], 'GPU')
+      tf.config.experimental.set_memory_growth(gpu, True)
+      # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*4)])
+      # tf.config.set_logical_device_configuration(gpus[0],
+      #   [tf.config.LogicalDeviceConfiguration(memory_limit=3072)]  # MB
+      #   )
+    except RuntimeError as e:
+      print(e)
 
 tf.random.set_seed(
   42

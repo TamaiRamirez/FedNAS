@@ -10,7 +10,6 @@ from absl import logging
 
 import flwr_enas_nofix.src.framework as fw
 
-import psutil
 import gc
 import os
 gc.enable()

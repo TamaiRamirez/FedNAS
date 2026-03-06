@@ -10,7 +10,7 @@ from flwr_enas_nofix.src.utils import LearningRate, ClipMode, Optimizer, Layered
 from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm
 
 
-DEFINE_integer("batch_size", 32, "")
+DEFINE_integer("batch_size", 64, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
 DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
@@ -20,16 +20,7 @@ DEFINE_float("child_l2_reg", 0.00025, "")
 # DEFINE_float("child_lr", 0.05, "")
 
 
-"""
-Recomendacion de Gepeto para Scheduler:
-init        = lr_global_r
-start       = 0
-every       = num_train_batches   # 1 decay por época
-rate        = 0.95                # suave
-dec_min     = lr_global_r * 0.1   # NO absoluto
-lr_warmup   = None
-"""
-DEFINE_integer("child_lr_dec_every", 100, "")
+DEFINE_integer("child_lr_dec_every", 100, "") # Sin Scheduler local
 DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule") # Mejor usar el Scheduler Regular en FL
 DEFINE_float("child_lr_dec_rate", 0.95, "")
 DEFINE_float("child_lr_max", 0.05, "for lr schedule")
