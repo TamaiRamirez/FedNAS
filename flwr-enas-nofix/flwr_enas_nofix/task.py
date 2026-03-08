@@ -249,8 +249,8 @@ def load_data(partition_id, num_partitions):
         print("Number of images Original Dataset TEST:", test_set.shape[0])
     
     
-        X_train = np.concatenate((train_set["img"], train_set["img"]), axis=0) 
-        y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
+        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
+        y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
         
         
     elif DATASET_NAME == "cifar100":
@@ -511,31 +511,32 @@ class Trainer:
         # tf.config.run_functions_eagerly(True)
         # tf.data.experimental.enable_debug_mode()
         # gc.collect()
-        # fw.clear_session()
+        fw.clear_session()
         FLAGS = flags.FLAGS
         # images, labels = data["images"], data["labels"]
-        if self.actual_round == 1:
-            print("*" * 80)
-            print("CONFIGURATION:")
-            print()
-            print(f"EXPERIMENT ID: {get_exp_id()}\n")
-            print(f"STATUS: VALID\n") # valid | failed | discarded | debug
-            print("REASON: N/A\n\n")
-            print(f"DATE: {datetime.now()}\n\n")
-            print(f"\tDATASET_NAME: {DATASET_NAME}\n")
-            if NON_IID:
-                print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+        # if self.actual_round == 1:
+        #     print("*" * 80)
+        #     print("CONFIGURATION:")
+        #     print()
+        #     print(f"EXPERIMENT ID: {get_exp_id()}\n")
+        #     print(f"STATUS: VALID\n") # valid | failed | discarded | debug
+        #     print("REASON: N/A\n\n")
+        #     print(f"DATE: {datetime.now()}\n\n")
+        #     print(f"\tDATASET_NAME: {DATASET_NAME}\n")
+        #     if NON_IID:
+        #         print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
             
-            else:
-                print(f"\tDATA PARTITIONING: IID\n")
-            print(f"\tAGG_METHOD: {AGG_METHOD}\n")
-            print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
-            print(f"\tNUM_NODES: {NUM_NODES}\n")
-            if AGG_METHOD != "fedavg":
-                print(f"\tMU: {MU}\n")
-            print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
-            print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
-            print("*" * 80)
+        #     else:
+        #         print(f"\tDATA PARTITIONING: IID\n")
+        #     print(f"\tAGG_METHOD: {AGG_METHOD}\n")
+        #     print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+        #     print(f"\tNUM_NODES: {NUM_NODES}\n")
+        #     if AGG_METHOD != "fedavg":
+        #         print(f"\tMU: {MU}\n")
+        #     print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+        #     print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+        #     print("*" * 80)
+        
         self.get_ops()
         batch_iterator = None
 

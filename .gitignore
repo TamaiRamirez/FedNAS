@@ -5,3 +5,15 @@ flwr-cifar10-basic/flwr_cifar10_basic/checkpoints/
 flwr-enas-nofix/experiments/
 flwr-enas-nofix/logs/
 venv/
+mlruns/
+mlflow.db/
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.csv
+*.h5
+notas.txt
+solucion-incidente-docker.txt

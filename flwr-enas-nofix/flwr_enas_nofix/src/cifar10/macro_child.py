@@ -75,7 +75,9 @@ class MacroChild(Child):
     self.mu = mu
     
     if self.transfer:
-      self.global_weights = copy.deepcopy(child_weights)
+      # Transfer weights from global model to child model
+      self.global_weights = fw.WeightRegistry()
+      self.global_weights.weight_map = copy.deepcopy(child_weights)
       self.weights.weight_map = copy.deepcopy(child_weights)
 
     
@@ -1036,7 +1038,7 @@ class MacroChild(Child):
       if self.transfer:
         keys = list(self.weights.weight_map.keys())
         for key in keys:
-          diff = self.weights.weight_map[key] - self.global_weights[key]
+          diff = self.weights.weight_map[key] - self.global_weights.weight_map[key]
           proximal_term += fw.reduce_sum(fw.square(diff))
 
       # fw.print("Prox:", (self.mu/2) * proximal_term)
