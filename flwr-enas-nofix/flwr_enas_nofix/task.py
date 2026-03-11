@@ -62,6 +62,7 @@ BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
 MU = toml_config["tool"]["flwr"]["app"]["config"]["mu"]
 NUM_ROUNDS = toml_config["tool"]["flwr"]["app"]["config"]["num-server-rounds"]
 NUM_NODES = toml_config["tool"]["flwr"]["app"]["config"]["num-nodes"]
+NUM_CLASSES = toml_config["tool"]["flwr"]["app"]["config"]["num-classes"]
 
 def write_experiment_txt():
     exp_dir = get_experiment_dir()
@@ -213,6 +214,19 @@ def load_data(partition_id, num_partitions):
     global fds
     images, labels = {}, {}
 
+    def _to_32x32x3(x):
+        x = np.asarray(x)
+        if x.ndim == 4 and x.shape[-1] == 1:
+            x = x[..., 0]
+        if x.ndim != 3:
+            raise ValueError(f"Expected [N,H,W] or [N,H,W,1], got shape {x.shape}")
+        if x.shape[1] == 28 and x.shape[2] == 28:
+            x = np.pad(x, ((0, 0), (2, 2), (2, 2)), mode="constant")
+        elif x.shape[1] != 32 or x.shape[2] != 32:
+            raise ValueError(f"Expected spatial size 28x28 or 32x32, got {x.shape[1:3]}")
+        x = x[..., np.newaxis]
+        return np.repeat(x, 3, axis=-1)
+
     if DATASET_NAME == "cifar10":
         if fds is None:
             if NON_IID:
@@ -251,6 +265,25 @@ def load_data(partition_id, num_partitions):
     
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
         y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(test_set["img"]) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
         
         
     elif DATASET_NAME == "cifar100":
@@ -263,7 +296,7 @@ def load_data(partition_id, num_partitions):
                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
                 # heterogeneity and ensuring each client has enough samples for stable
                 # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="fine_label", min_partition_size=1500,
                                                 self_balancing=True,
                                                 seed=42,
                                                 shuffle=True)
@@ -290,24 +323,81 @@ def load_data(partition_id, num_partitions):
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
         y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
         
-    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-    images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-    images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-    
-    mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-    std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
-    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
-    images["train"] = np.float32((images["train"] - mean) / std)
-    images["valid"] = np.float32((images["valid"] - mean) / std)
-    
-    # print(test_set["img"])
-    
-    images["test"] = np.float32(test_set["img"]) / 255.0
-    images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(test_set["img"]) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["fine_label"])
+
+    elif DATASET_NAME == "fashion_mnist":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
+        X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
+        X_train = _to_32x32x3(X_train)
+        y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
+        
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(_to_32x32x3(test_set["image"])) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
@@ -400,7 +490,8 @@ class Trainer:
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
                 mu = 0.0,
-                learning_rate=self.learning_rate
+                learning_rate=self.learning_rate,
+                num_clases=NUM_CLASSES
             )
         
         else:
@@ -412,7 +503,8 @@ class Trainer:
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
                 mu = MU,
-                learning_rate=self.learning_rate
+                learning_rate=self.learning_rate,
+                num_clases=NUM_CLASSES
             )
         
         controller_ops = None
