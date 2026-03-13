@@ -24,17 +24,17 @@ serverapp = "flwr_enas_nofix.server_app:app"
 clientapp = "flwr_enas_nofix.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 2
+num-server-rounds = 40
 num-nodes = 6
-local-epochs = 2
+local-epochs = 10
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
-non_iid = false
+non_iid = true
 alpha = 0.1
-dataset = "zalando-datasets/fashion_mnist"  # uoft-cs/cifar10, uoft-cs/cifar100, zalando-datasets/fashion_mnist
-dataset_name = "fashion_mnist"              # cifar10, cifar100, fashion_mnist
-num-classes = 10
+dataset = "uoft-cs/cifar100"  # uoft-cs/cifar10, uoft-cs/cifar100, zalando-datasets/fashion_mnist
+dataset_name = "cifar100"              # cifar10, cifar100, fashion_mnist
+num-classes = 100
 agg_method = "fedavg"
 mu = 0.0
 
