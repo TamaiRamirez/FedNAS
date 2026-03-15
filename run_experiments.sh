@@ -24,8 +24,8 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 NON_IID_LIST=(false true true true)
 ALPHA_LIST=(0.0 1.0 0.5 0.1)
-AGG_LIST=("fedavg" "fedavg" "fedavg" "fedavg")
-MU_LIST=(0.0 0.0 0.0 0.0)
+AGG_LIST=("fedprox" "fedprox" "fedprox" "fedprox")
+MU_LIST=(0.0 0.01 0.1 1.0)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 

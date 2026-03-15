@@ -35,8 +35,8 @@ alpha = 0.1
 dataset = "uoft-cs/cifar100"  # uoft-cs/cifar10, uoft-cs/cifar100, zalando-datasets/fashion_mnist
 dataset_name = "cifar100"              # cifar10, cifar100, fashion_mnist
 num-classes = 100
-agg_method = "fedavg"
-mu = 0.0
+agg_method = "fedprox"
+mu = 1.0
 
 # [tool.flwr.federations]
 # default = "local-simulation"
