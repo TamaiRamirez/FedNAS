@@ -83,8 +83,8 @@ class FlowerClient(NumPyClient):
 
         df.to_parquet(path, engine="pyarrow", index=False)
 
-        return model_weights, len(model_weights), {"valid_f1_score": result["child_valid_f1_score"]}
-        # return {weights, size of weights, (results -> aggregate fit function)}
+        return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": result["child_valid_f1_score"]}
+        # return {weights, num_examples, (results -> aggregate fit function)}
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]
@@ -94,7 +94,7 @@ class FlowerClient(NumPyClient):
         test_loss = client_info.get("last_test_loss", 0.0)
         test_f1_score = client_info.get("last_test_f1_score", 0.0)
         valid_f1_score = client_info.get("last_valid_f1_score", 0.0)
-        return test_loss, len(self.data["images"]["test"]), {
+        return valid_loss, len(self.data["images"]["valid"]), {
             "child_valid_acc": valid_acc,
             "child_valid_loss": valid_loss,
             "child_valid_f1_score": valid_f1_score,
