@@ -35,8 +35,8 @@ alpha = 0.1
 dataset = "ylecun/mnist"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
 dataset_name = "mnist"      # cifar10, cifar100, mnist, femnist
 num-classes = 10              # 10, 100, 10, 62  
-agg_method = "fedavg"
-mu = 0.0
+agg_method = "fedprox"
+mu = 1.0
 
 # [tool.flwr.federations]
 # default = "local-simulation"
