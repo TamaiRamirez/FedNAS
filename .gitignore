@@ -3,6 +3,7 @@ NAS-Implementation/
 flwr-cifar10-basic/flwr_cifar10_basic/logs/
 flwr-cifar10-basic/flwr_cifar10_basic/checkpoints/
 flwr-enas-nofix/experiments/
+flwr-enas-nofix/ablation/
 flwr-enas-nofix/logs/
 venv/
 mlruns/

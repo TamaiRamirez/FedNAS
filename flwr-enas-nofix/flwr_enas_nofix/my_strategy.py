@@ -9,13 +9,17 @@ from datetime import timedelta
 import shutil
 
 
-from .task import PROJECT_PATH, NON_IID, ALPHA, DATASET_NAME, AGG_METHOD
+from .task import PROJECT_PATH, NON_IID, ALPHA, DATASET_NAME, AGG_METHOD, ABLATION, BETA, NUM_NODES
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
 import numpy as np
-from experiment_api import get_controller_weights_dir, get_results_dir, get_exp_id, get_experiment_dir
+import experiment_api as exp_api
+import ablation_api as abla_api
 import pandas as pd
+import math
+
+api = abla_api if ABLATION else exp_api
 
 class CustomFedProxPerformace(FedProx):
     """A strategy that keeps the core functionality of FedProx with performance weightning and enables
@@ -23,132 +27,248 @@ class CustomFedProxPerformace(FedProx):
     file system as a JSON, pushing metrics to Weight & Biases, and logging to TensorBoard.
     """
     
-    # NOT IMPLEMENTED YET
-    
-    None
-    
-    # def __init__(self, num_rounds, initial_parameters=None, *args, **kwargs):
-    #     super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
+    def __init__(self, num_rounds, initial_parameters=None, *args, **kwargs):
+        super().__init__(initial_parameters=initial_parameters, *args, **kwargs)
 
-    #     # Dictionary to store metrics
-    #     self.results_to_save = {}
-    #     self.start_time = time.time()
-    #     self.num_rounds = num_rounds
+        # Dictionary to store metrics
+        self.results_to_save = {}
+        self.start_time = time.time()
+        self.num_rounds = num_rounds
+        self.variation_metric = []  # Lista para almacenar la variación de la métrica entre rondas
+        self.weights_entropy = []
+        self.effective_num_clients = None  # número efectivo de clientes en cada ronda
+        self.prev_f1_by_client: dict[str, float] = {}  # Historial de F1 scores para cada cliente en cada ronda
         
-    # def performance_aggregate(self, results: list[tuple[NDArrays, int]], total_acc) -> NDArrays:
+    # def performance_aggregate(self, results: list[tuple[NDArrays, int]], server_round: int) -> NDArrays:
     #     """Compute performance weighted average."""
     #     # Calculate the total number of examples used during training
-    #     num_examples_total = sum(num_examples for (_, num_examples, _) in results)
+        
+        
 
+    #     round_variations = []
+    #     for i in range(len(results)):
+    #         _, _, f1_score = results[i]
+    #         round_variations.append(
+    #             f1_score - self.f1_scores_history[-1][i]
+    #         )
+    #     self.f1_scores_history.append([f1_score for _, _, f1_score in results])
+    #     self.variation_metric.append(round_variations)
+
+        
+    #     for i in range(len(results)):
+    #         weights, num_examples, _ = results[i]
+            
+    #         z_score = np.clip((self.variation_metric[server_round - 1][i] - np.mean(self.variation_metric[server_round - 1])) / (np.std(self.variation_metric[server_round - 1]) + 1e-8), -3, 3)
+    #         lambda_weight = math.exp(BETA * z_score)
+    #         results[i] = (weights, num_examples, lambda_weight)
+        
+        
     #     # Create a list of weights, each multiplied by the related number of examples
     #     weighted_weights = [
-    #         [layer * num_examples * acc/total_acc for layer in weights] for weights, num_examples, acc in results
+    #         [layer * num_examples * lambda_weight for layer in weights] for weights, num_examples, lambda_weight in results
     #     ]
 
     #     # Compute average weights of each layer
+    #     total = sum((num_examples * lambda_weight) for _, num_examples, lambda_weight in results)
+    #     self.effective_num_clients = 1.0 / sum((lambda_weight * num_examples/total) ** 2 for _, num_examples, lambda_weight in results)  # Número efectivo de clientes
+        
+    #     round_entropy = -sum(
+    #         (lambda_weight * num_examples / total)
+    #         * math.log(lambda_weight * num_examples / total + 1e-12)
+    #         for _, num_examples, lambda_weight in results
+    #     )
+    #     self.weights_entropy.append(round_entropy)
+
     #     weights_prime: NDArrays = [
-    #         reduce(np.add, layer_updates) / num_examples_total
+    #         reduce(np.add, layer_updates) / total
     #         for layer_updates in zip(*weighted_weights, strict=True)
     #     ]
     #     return weights_prime
 
-    # def aggregate_fit(
-    #     self,
-    #     server_round: int,
-    #     results: list[tuple[ClientProxy, FitRes]],
-    #     failures: list[tuple[ClientProxy, FitRes] | BaseException],
-    # ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
-    #     """Aggregate received model updates and save global model checkpoint."""
-    #     """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
-    #     # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
-    #     #     server_round, results, failures
-    #     # )
+    def performance_aggregate(
+        self,
+        results: list[tuple[str, NDArrays, int, float]],
+        server_round: int,
+    ) -> NDArrays:
+        """Compute performance weighted average."""
+
+        round_variations = []
+        current_f1_by_client = {}
+
+        for client_id, _, _, f1_score in results:
+            prev_f1 = self.prev_f1_by_client.get(client_id, 0.0)
+            round_variations.append(f1_score - prev_f1)
+            current_f1_by_client[client_id] = f1_score
+
+        self.prev_f1_by_client = current_f1_by_client
+        self.variation_metric.append(round_variations)
+
+        weighted_results = []
+        mean_var = np.mean(round_variations)
+        std_var = np.std(round_variations)
+
+        for idx, (client_id, weights, num_examples, _) in enumerate(results):
+            z_score = np.clip(
+                (round_variations[idx] - mean_var) / (std_var + 1e-8),
+                -3,
+                3,
+            )
+            lambda_weight = math.exp(BETA * z_score)
+            weighted_results.append((client_id, weights, num_examples, lambda_weight))
+
+        total = sum(num_examples * lambda_weight for _, _, num_examples, lambda_weight in weighted_results)
+
+        self.effective_num_clients = 1.0 / sum(
+            (num_examples * lambda_weight / total) ** 2
+            for _, _, num_examples, lambda_weight in weighted_results
+        )
+
+        round_entropy = -sum(
+            (num_examples * lambda_weight / total)
+            * math.log(num_examples * lambda_weight / total + 1e-12)
+            for _, _, num_examples, lambda_weight in weighted_results
+        )
+        self.weights_entropy.append(round_entropy)
+
+        weighted_weights = [
+            [layer * num_examples * lambda_weight for layer in weights]
+            for _, weights, num_examples, lambda_weight in weighted_results
+        ]
+
+        weights_prime: NDArrays = [
+            reduce(np.add, layer_updates) / total
+            for layer_updates in zip(*weighted_weights, strict=True)
+        ]
+
+        return weights_prime
+
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, FitRes]],
+        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
+        """Aggregate received model updates and save global model checkpoint."""
+        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+        # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
+        #     server_round, results, failures
+        # )
         
-    #     test_acc = []
-    #     for _, res in results:
-    #         test_acc.append(float(next(iter(res.metrics.values()))))
-    #     total_f1 = max(test_acc)
-    #     if not results:
-    #         return None, {}
-    #     # Do not aggregate if there are failures and failures are not accepted
-    #     if not self.accept_failures and failures:
-    #         return None, {}
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
 
         
-    #     # Convert results
-    #     weights_results = [
-    #         (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, float(next(iter(res.metrics.values()))))
-    #         for _, fit_res in results
-    #     ]
-    #     aggregated_ndarrays = self.performance_aggregate(weights_results, total_f1)
-
-    #     parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
-
-    #     # Aggregate custom metrics if aggregation fn was provided
-    #     metrics_aggregated = {}
-    #     # if self.fit_metrics_aggregation_fn:
-    #     #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-    #     #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-
-
-    #     return parameters_aggregated, metrics_aggregated
-
-    # def aggregate_evaluate(
-    #     self,
-    #     server_round: int,
-    #     results: list[tuple[ClientProxy, EvaluateRes]],
-    #     failures: list[BaseException],
-    # ) -> tuple[float, dict[str, float]]:
-
-    #     if not results:
-    #         print(f"[Round {server_round}] No evaluation results received.")
-    #         return None, {}
-
-    #     total_examples = sum(res.num_examples for _, res in results)
+        # Convert results
+        # weights_results = [
+        #     (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, fit_res.metrics["child_valid_f1_score"])
+        #     for _, fit_res in results
+        # ]
         
-    #     # Inicializar acumuladores
-    #     loss_total = 0.0
-    #     metrics_accum = {}
-    #     test_f1 = []
-    #     for _, res in results:
-    #         weight = res.num_examples / total_examples
-    #         loss_total += res.loss * weight
+        weights_results = [
+            (
+                client_proxy.cid,
+                parameters_to_ndarrays(fit_res.parameters),
+                fit_res.num_examples,
+                float(next(iter(fit_res.metrics.values())))
+            )
+            for client_proxy, fit_res in results
+        ]
 
-    #         for key, value in res.metrics.items():
-    #             if key not in metrics_accum:
-    #                 metrics_accum[key] = 0.0
-    #             metrics_accum[key] += value * weight
-    #             if key=="child_test_f1_score":
-    #                 test_f1.append(value * weight)
+        aggregated_ndarrays = self.performance_aggregate(weights_results, server_round)
 
-    #     CV = np.std(test_f1)/np.mean(test_f1) # coeficiente de variación (CV) F1 Score
+        parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
-    #     # Guardar resultados para esta ronda
-    #     round_results = {"loss": loss_total, **metrics_accum, "CV": CV}
-    #     self.results_to_save[server_round] = round_results
-    #     # Directorio de guardado
-    #     if NON_IID:
-    #         save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/Non-IID/{ALPHA}"
-    #     else:
-    #         save_path=f"{PROJECT_PATH}/{AGG_METHOD}/{DATASET_NAME}/IID"
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        # if self.fit_metrics_aggregation_fn:
+        #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+        #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
-    #     # Guardar en JSON
-    #     with open(f"{save_path}/results_global.json", "w") as f:
-    #         json.dump(self.results_to_save, f, indent=4)
 
-    #     # Mostrar en consola
-    #     print(f"[Round {server_round}] Aggregated Metrics:")
-    #     for k, v in round_results.items():
-    #         print(f"  {k}: {v:.4f}")
+        return parameters_aggregated, metrics_aggregated
 
-    #     if server_round == self.num_rounds:  # última ronda
-    #         elapsed = time.time() - self.start_time
-    #         elapsed_td = timedelta(seconds=int(elapsed))
-    #         with open(f"{save_path}/Training_time.txt", 'w', encoding='utf-8') as archivo:
-    #             archivo.write(f"Tiempo Total de entrenamiento: {elapsed_td}")
-    #         print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, EvaluateRes]],
+        failures: list[BaseException],
+    ) -> tuple[float, dict[str, float]]:
 
-    #     return loss_total, metrics_accum
+        if not results:
+            print(f"[Round {server_round}] No evaluation results received.")
+            return None, {}
+
+        total_examples = sum(res.num_examples for _, res in results)
+        
+        # Inicializar acumuladores
+        loss_total = 0.0
+        metrics_accum = {}
+        f1_scores = []
+        for _, res in results:
+            weight = res.num_examples / total_examples
+            loss_total += res.loss * weight
+
+            for key, value in res.metrics.items():
+                if key not in metrics_accum:
+                    metrics_accum[key] = 0.0
+                metrics_accum[key] += value * weight
+                if key=="child_test_f1_score":
+                    f1_scores.append(value)
+
+        # Analisis de fairness
+        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        Shannon_entropy = self.weights_entropy[-1] / math.log(len(results)) if len(results) > 1 else 0.0  # Entropía de Shannon de la distribución de métricas entre clientes
+        # A menor CV y mayor índice de Jain, mayor fairness.
+        
+        
+        # Guardar resultados para esta ronda
+        global_results = {
+            "exp_id": api.get_exp_id(),
+            "round": server_round,
+            "loss": loss_total, 
+            "CV": CV_clients, 
+            "Jain_index": Jain_index,
+            "Shannon_entropy": Shannon_entropy,
+            "Effective_num_clients": round(self.effective_num_clients),
+            **metrics_accum}
+
+        path = api.get_results_dir() / f"global_metrics.parquet"
+        # table = pa.Table.from_pylist([global_results])
+        # if path.exists():
+        #     pq.write_table(table, path, append=True)
+        # else:
+        #     pq.write_table(table, path)
+        
+        df = pd.DataFrame([global_results])
+        
+        if path.exists():
+            df_existing = pd.read_parquet(path)
+            df = pd.concat([df_existing, df], ignore_index=True)
+
+        df.to_parquet(path, engine="pyarrow", index=False)
+
+        # Mostrar en consola
+        print(f"[Round {server_round}] Aggregated Metrics:")
+        for k, v in global_results.items():
+            if isinstance(v, float):
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
+
+        if server_round == self.num_rounds:  # última ronda
+            exp_dir = api.get_experiment_dir()
+            path = exp_dir / "metadata_experiment.txt"
+            elapsed = time.time() - self.start_time
+            elapsed_td = timedelta(seconds=int(elapsed))
+            with open(path, "a") as f:
+                f.write(f"Tiempo Total de entrenamiento: {elapsed_td} \n")
+            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+
+        return loss_total, metrics_accum
     
 class CustomFedProx(FedProx):
     """A strategy that keeps the core functionality of FedProx unchanged but enables
@@ -203,24 +323,24 @@ class CustomFedProx(FedProx):
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
                 if key=="child_test_f1_score":
-                    f1_scores.append(value * weight)
+                    f1_scores.append(value)
 
         # Analisis de fairness
-        CV_clients = np.std(f1_scores)/np.mean(f1_scores) # coeficiente de variación (CV) dispersion entre clientes
-        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2))  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
         # A menor CV y mayor índice de Jain, mayor fairness.
         
         
         # Guardar resultados para esta ronda
         global_results = {
-            "exp_id": get_exp_id(),
+            "exp_id": api.get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
             "CV": CV_clients, 
             "Jain_index": Jain_index,
             **metrics_accum}
 
-        path = get_results_dir() / f"global_metrics.parquet"
+        path = api.get_results_dir() / f"global_metrics.parquet"
         # table = pa.Table.from_pylist([global_results])
         # if path.exists():
         #     pq.write_table(table, path, append=True)
@@ -244,7 +364,7 @@ class CustomFedProx(FedProx):
                 print(f"  {k}: {v}")
 
         if server_round == self.num_rounds:  # última ronda
-            exp_dir = get_experiment_dir()
+            exp_dir = api.get_experiment_dir()
             path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
@@ -308,24 +428,24 @@ class CustomFedAvg(FedAvg):
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
                 if key=="child_test_f1_score":
-                    f1_scores.append(value * weight)
+                    f1_scores.append(value)
 
         # Analisis de fairness
-        CV_clients = np.std(f1_scores)/np.mean(f1_scores) # coeficiente de variación (CV) dispersion entre clientes
-        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2))  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
         # A menor CV y mayor índice de Jain, mayor fairness.
         
         
         # Guardar resultados para esta ronda
         global_results = {
-            "exp_id": get_exp_id(),
+            "exp_id": api.get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
             "CV": CV_clients, 
             "Jain_index": Jain_index,
             **metrics_accum}
 
-        path = get_results_dir() / f"global_metrics.parquet"
+        path = api.get_results_dir() / f"global_metrics.parquet"
         # table = pa.Table.from_pylist([global_results])
         # if path.exists():
         #     pq.write_table(table, path, append=True)
@@ -349,7 +469,7 @@ class CustomFedAvg(FedAvg):
                 print(f"  {k}: {v}")
 
         if server_round == self.num_rounds:  # última ronda
-            exp_dir = get_experiment_dir()
+            exp_dir = api.get_experiment_dir()
             path = exp_dir / "metadata_experiment.txt"
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))

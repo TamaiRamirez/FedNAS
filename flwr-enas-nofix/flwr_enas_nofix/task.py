@@ -40,7 +40,8 @@ from functools import lru_cache
 import tomli
 from pathlib import Path
 
-from experiment_api import get_experiment_dir, get_exp_id, get_label_distributions_dir
+import experiment_api as exp_api
+import ablation_api as abla_api
 import pandas as pd
 
 # Make TensorFlow log less verbose
@@ -64,15 +65,20 @@ NUM_ROUNDS = toml_config["tool"]["flwr"]["app"]["config"]["num-server-rounds"]
 NUM_NODES = toml_config["tool"]["flwr"]["app"]["config"]["num-nodes"]
 NUM_CLASSES = toml_config["tool"]["flwr"]["app"]["config"]["num-classes"]
 
+BETA = toml_config["tool"]["flwr"]["app"]["config"]["beta"]
+ABLATION = toml_config["tool"]["flwr"]["app"]["config"]["ablation"]
+
+api = abla_api if ABLATION else exp_api
+
 def write_experiment_txt():
-    exp_dir = get_experiment_dir()
+    exp_dir = api.get_experiment_dir()
     path = exp_dir / "metadata_experiment.txt"
 
     if path.exists():
         return  # no lo sobrescribas
 
     with open(path, "w") as f:
-        f.write(f"EXPERIMENT ID: {get_exp_id()}\n")
+        f.write(f"EXPERIMENT ID: {api.get_exp_id()}\n")
         f.write(f"STATUS: VALID\n") # valid | failed | discarded | debug
         f.write("REASON: N/A\n\n")
         f.write(f"DATE: {datetime.now()}\n\n")
@@ -86,8 +92,10 @@ def write_experiment_txt():
         f.write(f"\tAGG_METHOD: {AGG_METHOD}\n")
         f.write(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
         f.write(f"\tNUM_NODES: {NUM_NODES}\n")
-        if AGG_METHOD != "fedavg":
+        if AGG_METHOD == "fedprox" or AGG_METHOD == "custom":
             f.write(f"\tMU: {MU}\n")
+        if AGG_METHOD == "custom":
+            f.write(f"\tBETA: {BETA}\n")
         f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
         f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
 
@@ -207,6 +215,61 @@ def ndarray_to_weights(array_data, keys):
 
     return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
 
+global_label_distribution = None
+
+
+def get_label_distribution(y, num_classes):
+    y = np.asarray(y, dtype=np.int32)
+    counts = np.bincount(y, minlength=num_classes).astype(np.float64)
+    probs = counts / counts.sum()
+    return probs
+
+
+def total_variation_distance(p, q):
+    p = np.asarray(p, dtype=np.float64)
+    q = np.asarray(q, dtype=np.float64)
+    return 0.5 * np.sum(np.abs(p - q))
+
+
+def init_global_label_distribution():
+    """
+    Calcula una sola vez la distribución global de etiquetas del split train completo.
+    """
+    global fds, global_label_distribution
+
+    if global_label_distribution is not None:
+        return global_label_distribution
+
+    full_train = fds.load_split("train")
+    full_train.set_format("numpy")
+
+    num_classes = NUM_CLASSES
+
+    if DATASET_NAME == "cifar100":
+        y_global = np.asarray(full_train["fine_label"], dtype=np.int32)
+    elif DATASET_NAME == "femnist":
+        y_global = np.asarray(full_train["character"], dtype=np.int32)
+    else:
+        y_global = np.asarray(full_train["label"], dtype=np.int32)
+
+    global_label_distribution = get_label_distribution(y_global, num_classes)
+    return global_label_distribution
+
+
+def compute_client_dis(y_local_raw):
+    """
+    Calcula:
+      - distribución local del cliente
+      - TV(local, global)
+      - dis_i = 1 + TV
+    usando las etiquetas originales del cliente.
+    """
+    num_classes = NUM_CLASSES
+    p_global = init_global_label_distribution()
+    p_local = get_label_distribution(y_local_raw, num_classes)
+    tv_i = total_variation_distance(p_local, p_global)
+    dis_i = 1.0 + tv_i
+    return dis_i, tv_i, p_local, p_global
 
 def load_data(partition_id, num_partitions):
     # Download and partition dataset
@@ -262,6 +325,10 @@ def load_data(partition_id, num_partitions):
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
     
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
     
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
         y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
@@ -320,6 +387,12 @@ def load_data(partition_id, num_partitions):
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["fine_label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
         y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
         
@@ -376,6 +449,12 @@ def load_data(partition_id, num_partitions):
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
         X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
         X_train = _to_32x32x3(X_train)
         y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
@@ -429,6 +508,11 @@ def load_data(partition_id, num_partitions):
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
 
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["character"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
         X_train = np.array(train_set["image"])
         X_train = _to_32x32x3(X_train)
         y_train = np.array(train_set['character'])
@@ -470,7 +554,7 @@ def load_data(partition_id, num_partitions):
             count = label_counts[label]
             print(f"  Class {label}: {count} samples")
             rows.append({
-                "exp_id": get_exp_id(),
+                "exp_id": api.get_exp_id(),
                 "partition_id": partition_id,
                 "dataset_name": DATASET_NAME,
                 "split": split,
@@ -484,14 +568,14 @@ def load_data(partition_id, num_partitions):
     df = pd.DataFrame(rows)
 
     df.to_parquet(
-        get_label_distributions_dir() / f"client_{partition_id}.parquet",
+        api.get_label_distributions_dir() / f"client_{partition_id}.parquet",
         engine="pyarrow",
         index=False,
     )
 
     # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
     
-    return {"images": images, "labels": labels}
+    return {"images": images, "labels": labels, "dis_i": dis_i}
     
 
         
