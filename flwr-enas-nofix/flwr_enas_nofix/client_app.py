@@ -42,7 +42,10 @@ class FlowerClient(NumPyClient):
             controller_weights = load_controller_weights(api.get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
             transfer = True
         
-        lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
+        if ABLATION:
+            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (40 - 1))) # Because in experiments I run for 40 rounds, but in ablation I run for 20 rounds, so I adjust the learning rate schedule accordingly to have a similar decay.
+        else:
+            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
         
         trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": controller_weights}, transfer, actual_round, self.partition_id, learning_rate=lr)
         result = trainer.train()
