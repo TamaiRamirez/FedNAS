@@ -24,8 +24,9 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 NON_IID_LIST=(false true true true)
 ALPHA_LIST=(0.0 1.0 0.5 0.1)
-AGG_LIST=("fedprox" "fedprox" "fedprox" "fedprox")
-MU_LIST=(0.0 0.01 0.1 1.0)
+AGG_LIST=("fedavg" "fedavg" "fedavg" "fedavg")
+MU_LIST=(0.0 0.0 0.0 0.0)
+BETA_LIST=(0.0 0.0 0.0 0.0)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
@@ -43,6 +44,7 @@ update_project_toml() {
     -e "s/^alpha = .*/alpha = ${2}/" \
     -e "s/^agg_method = .*/agg_method = \"${3}\"/" \
     -e "s/^mu = .*/mu = ${4}/" \
+    -e "s/^beta = .*/beta = ${5}/" \
     "$PROJECT_TOML"
 }
 

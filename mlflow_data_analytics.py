@@ -1,9 +1,10 @@
 import time
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 import mlflow
+from mlflow.tracking import MlflowClient
 
 
 # ======================
@@ -12,20 +13,20 @@ import mlflow
 EXPERIMENTS_ROOT = Path("/workspace/flwr-enas-nofix/experiments")
 ABLATION_ROOT = Path("/workspace/flwr-enas-nofix/ablation")
 
-MLFLOW_TRACKING_URI = None   # e.g. "sqlite:///mlflow.db"
-POLL_INTERVAL = 30           # seconds
+MLFLOW_TRACKING_URI = None
+POLL_INTERVAL = 30
 
-# If True, finished/invalid experiments are marked accordingly in MLflow tags
-MARK_INVALID_AS_TAG_ONLY = True
+DELETE_RUNS_FOR_NON_VALID = False
+DELETE_DUPLICATE_RUNS = False
+
+
+client = MlflowClient()
 
 
 # ======================
 # METADATA PARSING
 # ======================
 def parse_metadata_full(exp_dir: Path) -> Dict[str, str]:
-    """
-    Parses both the header fields and CONFIGURATION block from metadata_experiment.txt.
-    """
     metadata_file = exp_dir / "metadata_experiment.txt"
     data: Dict[str, str] = {}
 
@@ -57,40 +58,43 @@ def parse_metadata_full(exp_dir: Path) -> Dict[str, str]:
     return data
 
 
-def is_valid_experiment(exp_dir: Path) -> bool:
+def get_status(exp_dir: Path) -> str:
     metadata = parse_metadata_full(exp_dir)
-    return metadata.get("STATUS", "").upper() == "VALID"
+    return metadata.get("STATUS", "").upper()
+
+
+def is_valid_experiment(exp_dir: Path) -> bool:
+    return get_status(exp_dir) == "VALID"
 
 
 def get_source_exp_id(exp_dir: Path) -> str:
-    """
-    Unique identifier for the source experiment.
-    Prefer metadata EXPERIMENT ID, otherwise folder name.
-    """
     metadata = parse_metadata_full(exp_dir)
     return metadata.get("EXPERIMENT ID", exp_dir.name)
+
+
+def get_source_path(exp_dir: Path) -> str:
+    return str(exp_dir.resolve())
 
 
 def infer_study_type(exp_dir: Path) -> str:
     root_name = exp_dir.parent.name.lower()
     if root_name == "ablation":
         return "ablation"
-    elif root_name == "experiments":
+    if root_name == "experiments":
         return "benchmark"
     return "unknown"
 
 
 def build_mlflow_experiment_name(exp_dir: Path, metadata: Dict[str, str]) -> str:
-    """
-    Keeps benchmark and ablation separated in MLflow.
-    """
     dataset = metadata.get("DATASET_NAME", "UNKNOWN")
     method = metadata.get("AGG_METHOD", "UNKNOWN")
     study_type = infer_study_type(exp_dir)
 
     if study_type == "ablation":
         return f"ablation/{dataset}/{method}"
-    return f"benchmark/{dataset}"
+    if study_type == "benchmark":
+        return f"benchmark/{dataset}"
+    return f"other/{dataset}"
 
 
 # ======================
@@ -103,27 +107,72 @@ def get_or_create_experiment_by_name(experiment_name: str) -> str:
     return exp.experiment_id
 
 
-def get_existing_run(experiment_id: str, source_exp_id: str, study_type: str):
+def list_all_experiment_ids() -> List[str]:
+    exps = mlflow.search_experiments(view_type=1)
+    return [e.experiment_id for e in exps]
+
+
+def find_runs_by_source_path(source_path: str):
     """
-    Returns an existing MLflow run for the same source experiment if present.
+    Search across all experiments, including active and deleted runs.
     """
-    filter_string = (
-        f"tags.source_exp_id = '{source_exp_id}' "
-        f"and tags.study_type = '{study_type}'"
-    )
+    all_exp_ids = list_all_experiment_ids()
+    if not all_exp_ids:
+        return []
+
+    filter_string = f"tags.source_path = '{source_path}'"
     runs = mlflow.search_runs(
-        experiment_ids=[experiment_id],
+        experiment_ids=all_exp_ids,
         filter_string=filter_string,
         output_format="list",
     )
-    return runs[0] if runs else None
+    return runs
+
+
+def find_best_existing_run(source_path: str):
+    runs = find_runs_by_source_path(source_path)
+    if not runs:
+        return None
+
+    # Prefer active runs over deleted, newest first
+    runs = sorted(
+        runs,
+        key=lambda r: (
+            0 if r.info.lifecycle_stage == "active" else 1,
+            r.info.start_time or 0,
+        ),
+        reverse=False,
+    )
+    return runs[0]
+
+
+def delete_extra_duplicate_runs(source_path: str):
+    runs = find_runs_by_source_path(source_path)
+    if len(runs) <= 1:
+        return
+
+    # Keep first active run, delete the rest
+    runs_sorted = sorted(
+        runs,
+        key=lambda r: (
+            0 if r.info.lifecycle_stage == "active" else 1,
+            r.info.start_time or 0,
+        )
+    )
+    keep = runs_sorted[0]
+
+    for run in runs_sorted[1:]:
+        if run.info.lifecycle_stage != "deleted":
+            client.delete_run(run.info.run_id)
+            print(f"🗑️ Deleted duplicate run {run.info.run_id} for {source_path}")
+
+    return keep
 
 
 def set_common_tags(exp_dir: Path, metadata: Dict[str, str]):
-    study_type = infer_study_type(exp_dir)
-    mlflow.set_tag("study_type", study_type)
+    mlflow.set_tag("study_type", infer_study_type(exp_dir))
     mlflow.set_tag("source_exp_id", get_source_exp_id(exp_dir))
-    mlflow.set_tag("source_path", str(exp_dir))
+    mlflow.set_tag("source_path", get_source_path(exp_dir))
     mlflow.set_tag("folder_name", exp_dir.name)
     mlflow.set_tag("status", metadata.get("STATUS", "UNKNOWN"))
     mlflow.set_tag("reason", metadata.get("REASON", "N/A"))
@@ -131,21 +180,26 @@ def set_common_tags(exp_dir: Path, metadata: Dict[str, str]):
     mlflow.set_tag("method", metadata.get("AGG_METHOD", "UNKNOWN"))
 
 
+def maybe_move_run_to_correct_experiment(run_id: str, target_experiment_id: str) -> str:
+    run = client.get_run(run_id)
+    current_experiment_id = run.info.experiment_id
+    if current_experiment_id != target_experiment_id:
+        client.rename_run(run_id, run.data.tags.get("mlflow.runName", run_id))
+        client._tracking_client.store.tracking._get_store()._move_run_to_experiment  # noqa
+    return run_id
+
+
 # ======================
 # PARAMS / METRICS / ARTIFACTS
 # ======================
 def log_params(metadata: Dict[str, str]):
-    """
-    Logs configuration values as params.
-    Avoids volatile header fields like DATE/STATUS/REASON.
-    """
     excluded = {"STATUS", "REASON", "DATE", "EXPERIMENT ID"}
     for k, v in metadata.items():
         if k not in excluded:
             mlflow.log_param(k, str(v))
 
 
-def log_global_metrics_incremental(exp_dir: Path):
+def log_global_metrics(exp_dir: Path):
     global_file = exp_dir / "results" / "global_metrics.parquet"
     if not global_file.exists():
         return
@@ -169,7 +223,7 @@ def log_global_metrics_incremental(exp_dir: Path):
                     pass
 
 
-def log_client_aggregates_incremental(exp_dir: Path):
+def log_client_aggregates(exp_dir: Path):
     results_dir = exp_dir / "results"
     client_files = list(results_dir.glob("client_*.parquet"))
     if not client_files:
@@ -234,44 +288,59 @@ def log_artifacts(exp_dir: Path):
 
 
 # ======================
-# MAIN IMPORT LOGIC
+# MAIN UPSERT
 # ======================
 def upsert_experiment_run(exp_dir: Path):
     metadata = parse_metadata_full(exp_dir)
     if not metadata:
         return
 
-    study_type = infer_study_type(exp_dir)
-    experiment_name = build_mlflow_experiment_name(exp_dir, metadata)
-    experiment_id = get_or_create_experiment_by_name(experiment_name)
+    source_path = get_source_path(exp_dir)
     source_exp_id = get_source_exp_id(exp_dir)
+    status = get_status(exp_dir)
 
-    existing_run = get_existing_run(experiment_id, source_exp_id, study_type)
+    target_experiment_name = build_mlflow_experiment_name(exp_dir, metadata)
+    target_experiment_id = get_or_create_experiment_by_name(target_experiment_name)
 
-    # If experiment is not valid, optionally mark existing run and skip metric/artifact import
-    if not is_valid_experiment(exp_dir):
-        if existing_run and MARK_INVALID_AS_TAG_ONLY:
-            with mlflow.start_run(run_id=existing_run.info.run_id):
-                set_common_tags(exp_dir, metadata)
-                mlflow.set_tag("import_state", "skipped_non_valid")
+    if DELETE_DUPLICATE_RUNS:
+        existing_run = delete_extra_duplicate_runs(source_path)
+    else:
+        existing_run = find_best_existing_run(source_path)
+
+    # If current folder is not VALID, update or delete any old run and stop
+    if status != "VALID":
+        if existing_run:
+            run_id = existing_run.info.run_id
+            if DELETE_RUNS_FOR_NON_VALID:
+                if existing_run.info.lifecycle_stage != "deleted":
+                    client.delete_run(run_id)
+                    print(f"🗑️ Deleted non-VALID run: {exp_dir} -> run_id={run_id}")
+            else:
+                with mlflow.start_run(run_id=run_id):
+                    set_common_tags(exp_dir, metadata)
+                    mlflow.set_tag("import_state", "non_valid")
+                print(f"⏭️ Marked non-VALID run: {exp_dir} -> run_id={run_id}")
         return
 
-    if existing_run:
+    # VALID experiment
+    if existing_run and existing_run.info.lifecycle_stage == "active":
         run_id = existing_run.info.run_id
         with mlflow.start_run(run_id=run_id):
             set_common_tags(exp_dir, metadata)
             log_params(metadata)
-            log_global_metrics_incremental(exp_dir)
-            log_client_aggregates_incremental(exp_dir)
+            log_global_metrics(exp_dir)
+            log_client_aggregates(exp_dir)
             log_artifacts(exp_dir)
+            mlflow.set_tag("import_state", "updated")
         print(f"🔄 Updated existing run: {exp_dir} -> run_id={run_id}")
     else:
-        with mlflow.start_run(run_name=exp_dir.name, experiment_id=experiment_id):
+        with mlflow.start_run(run_name=exp_dir.name, experiment_id=target_experiment_id):
             set_common_tags(exp_dir, metadata)
             log_params(metadata)
-            log_global_metrics_incremental(exp_dir)
-            log_client_aggregates_incremental(exp_dir)
+            log_global_metrics(exp_dir)
+            log_client_aggregates(exp_dir)
             log_artifacts(exp_dir)
+            mlflow.set_tag("import_state", "created")
         print(f"✅ Created new run: {exp_dir}")
 
 
