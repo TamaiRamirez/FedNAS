@@ -206,7 +206,7 @@ class CustomFedProxPerformace(FedProx):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        f1_scores = []
+        f1_scores_valid, f1_scores_test = [], []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -215,12 +215,16 @@ class CustomFedProxPerformace(FedProx):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
+                if key=="child_valid_f1_score":
+                    f1_scores_valid.append(value)
                 if key=="child_test_f1_score":
-                    f1_scores.append(value)
+                    f1_scores_test.append(value)
 
         # Analisis de fairness
-        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
-        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_valid = np.std(f1_scores_valid)/ (np.mean(f1_scores_valid) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_valid = (np.sum(f1_scores_valid))**2 / (len(f1_scores_valid) * np.sum(np.array(f1_scores_valid)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_test = np.std(f1_scores_test)/ (np.mean(f1_scores_test) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_test = (np.sum(f1_scores_test))**2 / (len(f1_scores_test) * np.sum(np.array(f1_scores_test)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
         Shannon_entropy = self.weights_entropy[-1] / math.log(len(results)) if len(results) > 1 else 0.0  # Entropía de Shannon de la distribución de métricas entre clientes
         # A menor CV y mayor índice de Jain, mayor fairness.
         
@@ -230,8 +234,10 @@ class CustomFedProxPerformace(FedProx):
             "exp_id": api.get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
-            "CV": CV_clients, 
-            "Jain_index": Jain_index,
+            "CV_valid": CV_clients_valid, 
+            "Jain_index_valid": Jain_index_valid,
+            "CV_test": CV_clients_test, 
+            "Jain_index_test": Jain_index_test,
             "Shannon_entropy": Shannon_entropy,
             "Effective_num_clients": round(self.effective_num_clients),
             **metrics_accum}
@@ -313,7 +319,7 @@ class CustomFedProx(FedProx):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        f1_scores = []
+        f1_scores_valid, f1_scores_test = [], []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -322,12 +328,16 @@ class CustomFedProx(FedProx):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
+                if key=="child_valid_f1_score":
+                    f1_scores_valid.append(value)
                 if key=="child_test_f1_score":
-                    f1_scores.append(value)
+                    f1_scores_test.append(value)
 
         # Analisis de fairness
-        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
-        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_valid = np.std(f1_scores_valid)/ (np.mean(f1_scores_valid) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_valid = (np.sum(f1_scores_valid))**2 / (len(f1_scores_valid) * np.sum(np.array(f1_scores_valid)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_test = np.std(f1_scores_test)/ (np.mean(f1_scores_test) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_test = (np.sum(f1_scores_test))**2 / (len(f1_scores_test) * np.sum(np.array(f1_scores_test)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
         # A menor CV y mayor índice de Jain, mayor fairness.
         
         
@@ -336,8 +346,10 @@ class CustomFedProx(FedProx):
             "exp_id": api.get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
-            "CV": CV_clients, 
-            "Jain_index": Jain_index,
+            "CV_valid": CV_clients_valid, 
+            "Jain_index_valid": Jain_index_valid,
+            "CV_test": CV_clients_test, 
+            "Jain_index_test": Jain_index_test,
             **metrics_accum}
 
         path = api.get_results_dir() / f"global_metrics.parquet"
@@ -418,7 +430,7 @@ class CustomFedAvg(FedAvg):
         # Inicializar acumuladores
         loss_total = 0.0
         metrics_accum = {}
-        f1_scores = []
+        f1_scores_valid, f1_scores_test = [], []
         for _, res in results:
             weight = res.num_examples / total_examples
             loss_total += res.loss * weight
@@ -427,12 +439,16 @@ class CustomFedAvg(FedAvg):
                 if key not in metrics_accum:
                     metrics_accum[key] = 0.0
                 metrics_accum[key] += value * weight
+                if key=="child_valid_f1_score":
+                    f1_scores_valid.append(value)
                 if key=="child_test_f1_score":
-                    f1_scores.append(value)
+                    f1_scores_test.append(value)
 
         # Analisis de fairness
-        CV_clients = np.std(f1_scores)/ (np.mean(f1_scores) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
-        Jain_index = (np.sum(f1_scores))**2 / (len(f1_scores) * np.sum(np.array(f1_scores)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_valid = np.std(f1_scores_valid)/ (np.mean(f1_scores_valid) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_valid = (np.sum(f1_scores_valid))**2 / (len(f1_scores_valid) * np.sum(np.array(f1_scores_valid)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
+        CV_clients_test = np.std(f1_scores_test)/ (np.mean(f1_scores_test) + 1e-12) # coeficiente de variación (CV) dispersion entre clientes
+        Jain_index_test = (np.sum(f1_scores_test))**2 / (len(f1_scores_test) * np.sum(np.array(f1_scores_test)**2) + 1e-12)  # Índice de Jain (0 a 1, 1 es perfecto)
         # A menor CV y mayor índice de Jain, mayor fairness.
         
         
@@ -441,8 +457,10 @@ class CustomFedAvg(FedAvg):
             "exp_id": api.get_exp_id(),
             "round": server_round,
             "loss": loss_total, 
-            "CV": CV_clients, 
-            "Jain_index": Jain_index,
+            "CV_valid": CV_clients_valid, 
+            "Jain_index_valid": Jain_index_valid,
+            "CV_test": CV_clients_test, 
+            "Jain_index_test": Jain_index_test,
             **metrics_accum}
 
         path = api.get_results_dir() / f"global_metrics.parquet"
