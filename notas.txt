@@ -10,3 +10,4 @@ flower-supernode \
 flwr run . local-deployment --stream
 
 python3 -m mlflow ui --port 5000
+

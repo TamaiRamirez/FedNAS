@@ -125,7 +125,7 @@ def process_experiments(base_dir: str, experiment_ids: list[str], backup: bool =
 
 
 if __name__ == "__main__":
-    BASE_DIR = "/workspace/flwr-enas-nofix/experiments"
-    EXPERIMENTS = ["20260324_1", "20260325_1", "20260325_2", "20260326_1", "20260326_2"]
+    BASE_DIR = "/workspace/flwr-enas-nofix/ablation"
+    EXPERIMENTS = ["20260321_1", "20260322_1", "20260322_2", "20260322_3", "20260322_4", "20260322_5", "20260322_6", "20260323_1", "20260323_2", "20260323_3", "20260323_4", "20260324_1", "20260324_2", "20260324_3"]
 
     process_experiments(BASE_DIR, EXPERIMENTS, backup=True)

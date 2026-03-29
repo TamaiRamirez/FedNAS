@@ -38,52 +38,6 @@ class CustomFedProxPerformace(FedProx):
         self.weights_entropy = []
         self.effective_num_clients = None  # número efectivo de clientes en cada ronda
         self.prev_f1_by_client: dict[str, float] = {}  # Historial de F1 scores para cada cliente en cada ronda
-        
-    # def performance_aggregate(self, results: list[tuple[NDArrays, int]], server_round: int) -> NDArrays:
-    #     """Compute performance weighted average."""
-    #     # Calculate the total number of examples used during training
-        
-        
-
-    #     round_variations = []
-    #     for i in range(len(results)):
-    #         _, _, f1_score = results[i]
-    #         round_variations.append(
-    #             f1_score - self.f1_scores_history[-1][i]
-    #         )
-    #     self.f1_scores_history.append([f1_score for _, _, f1_score in results])
-    #     self.variation_metric.append(round_variations)
-
-        
-    #     for i in range(len(results)):
-    #         weights, num_examples, _ = results[i]
-            
-    #         z_score = np.clip((self.variation_metric[server_round - 1][i] - np.mean(self.variation_metric[server_round - 1])) / (np.std(self.variation_metric[server_round - 1]) + 1e-8), -3, 3)
-    #         lambda_weight = math.exp(BETA * z_score)
-    #         results[i] = (weights, num_examples, lambda_weight)
-        
-        
-    #     # Create a list of weights, each multiplied by the related number of examples
-    #     weighted_weights = [
-    #         [layer * num_examples * lambda_weight for layer in weights] for weights, num_examples, lambda_weight in results
-    #     ]
-
-    #     # Compute average weights of each layer
-    #     total = sum((num_examples * lambda_weight) for _, num_examples, lambda_weight in results)
-    #     self.effective_num_clients = 1.0 / sum((lambda_weight * num_examples/total) ** 2 for _, num_examples, lambda_weight in results)  # Número efectivo de clientes
-        
-    #     round_entropy = -sum(
-    #         (lambda_weight * num_examples / total)
-    #         * math.log(lambda_weight * num_examples / total + 1e-12)
-    #         for _, num_examples, lambda_weight in results
-    #     )
-    #     self.weights_entropy.append(round_entropy)
-
-    #     weights_prime: NDArrays = [
-    #         reduce(np.add, layer_updates) / total
-    #         for layer_updates in zip(*weighted_weights, strict=True)
-    #     ]
-    #     return weights_prime
 
     def performance_aggregate(
         self,
@@ -271,8 +225,8 @@ class CustomFedProxPerformace(FedProx):
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
             with open(path, "a") as f:
-                f.write(f"Tiempo Total de entrenamiento: {elapsed_td} \n")
-            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+                f.write(f"Total training time: {elapsed_td} \n")
+            print(f"⏱ Total training time: {elapsed_td}")
 
         return loss_total, metrics_accum
     
@@ -381,8 +335,8 @@ class CustomFedProx(FedProx):
             elapsed = time.time() - self.start_time
             elapsed_td = timedelta(seconds=int(elapsed))
             with open(path, "a") as f:
-                f.write(f"Tiempo Total de entrenamiento: {elapsed_td} \n")
-            print(f"⏱ Tiempo total de entrenamiento: {elapsed_td}")
+                f.write(f"Total training time: {elapsed_td} \n")
+            print(f"⏱ Total training time: {elapsed_td}")
 
         return loss_total, metrics_accum
     
