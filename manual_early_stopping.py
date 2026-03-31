@@ -15,11 +15,11 @@ import pandas as pd
 # ============================================================
 
 BASE_DIR = Path("/workspace/flwr-enas-nofix/experiments")
-EXPERIMENT_IDS = ["20260324_1", "20260325_1", "20260325_2", "20260326_1", "20260326_2", "20260327_1", "20260328_1", "20260328_2"] 
+EXPERIMENT_IDS = ["20260330_3"] 
 
-PATIENCE = 5
+PATIENCE = 3
 MIN_DELTA = 0.0
-START_EARLY_STOPPING_ROUND = 30
+START_EARLY_STOPPING_ROUND = 27
 RANDOM_SEED = 42
 
 random.seed(RANDOM_SEED)
@@ -45,7 +45,7 @@ def early_stopping_best_round(
     values: list[float],
     patience: int = 3,
     min_delta: float = 0.0,
-    start_round: int = 30,
+    start_round: int = 27,
 ) -> int:
     """
     Aplica Early Stopping sobre una métrica a minimizar, pero solo a partir
@@ -117,6 +117,17 @@ def parse_training_time(text: str) -> tuple[str, timedelta]:
 
     return match.group(0), total_time
 
+def parse_stop_round(text: str) -> tuple[str, timedelta]:
+    pattern = r"(\tNUM_ROUNDS:\s*)(\d+)"
+    match = re.search(pattern, text)
+    if not match:
+        raise ValueError(
+            "No se encontró la línea 'NUM_ROUNDS: <number>' "
+            "en metadata_experiment.txt"
+        )
+
+    return match.group(0)
+
 
 def format_timedelta_hhmmss(td: timedelta) -> str:
     total_seconds = max(0, int(td.total_seconds()))
@@ -126,7 +137,7 @@ def format_timedelta_hhmmss(td: timedelta) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
-def update_metadata_time(metadata_path: Path, removed_rounds: int) -> None:
+def update_metadata(metadata_path: Path, removed_rounds: int, stop_round: int) -> None:
     backup_path = metadata_path.with_name("metadata_old.txt")
     backup_file(metadata_path, backup_path)
 
@@ -152,6 +163,14 @@ def update_metadata_time(metadata_path: Path, removed_rounds: int) -> None:
 
     updated_content = content.replace(original_line, new_line, 1)
     metadata_path.write_text(updated_content, encoding="utf-8")
+
+    num_rounds_line = parse_stop_round(content)
+
+    new_rounds_line = f"\tNUM_ROUNDS: {stop_round}"
+    updated_content = updated_content.replace(num_rounds_line, new_rounds_line, 1)
+    metadata_path.write_text(updated_content, encoding="utf-8")
+
+
 
 
 def trim_parquet_to_round(parquet_path: Path, stop_round: int) -> None:
@@ -236,7 +255,7 @@ def process_experiment(
         trim_parquet_to_round(parquet_path, stop_round)
         print(f"  Actualizado: {parquet_path.name}")
 
-    update_metadata_time(metadata_path, removed_rounds)
+    update_metadata(metadata_path, removed_rounds, stop_round)
     print(f"  Actualizado: {metadata_path.name}")
 
 

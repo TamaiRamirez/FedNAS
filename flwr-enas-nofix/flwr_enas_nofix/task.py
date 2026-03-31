@@ -70,12 +70,102 @@ ABLATION = toml_config["tool"]["flwr"]["app"]["config"]["ablation"]
 
 api = abla_api if ABLATION else exp_api
 
+EARLY_STOPPING = False
+EARLY_STOPPING_START_ROUND = 27
+EARLY_STOPPING_PATIENCE = 3
+EARLY_STOPPING_MIN_DELTA = 0.0
+
+
+def get_early_stopping_info_path():
+    return api.get_controller_weights_dir() / "early_stoping_info.json"
+
+
+def initialize_early_stopping_info():
+    global EARLY_STOPPING
+    EARLY_STOPPING = False
+
+    path = get_early_stopping_info_path()
+    payload = {"EARLY_STOPPING": False}
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4)
+
+
+def read_early_stopping_flag():
+    global EARLY_STOPPING
+    path = get_early_stopping_info_path()
+
+    if not path.exists():
+        return EARLY_STOPPING
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        EARLY_STOPPING = bool(payload.get("EARLY_STOPPING", False))
+    except Exception:
+        pass
+
+    return EARLY_STOPPING
+
+
+def write_early_stopping_flag(value: bool):
+    global EARLY_STOPPING
+    EARLY_STOPPING = bool(value)
+
+    path = get_early_stopping_info_path()
+    payload = {"EARLY_STOPPING": EARLY_STOPPING}
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4)
+
+
+def early_stopping_best_round(
+    rounds: list[int],
+    values: list[float],
+    patience: int = EARLY_STOPPING_PATIENCE,
+    min_delta: float = EARLY_STOPPING_MIN_DELTA,
+    start_round: int = EARLY_STOPPING_START_ROUND,
+) -> int:
+    """
+    Early stopping para una métrica a minimizar.
+    Solo se evalúa desde start_round.
+    Devuelve la mejor ronda.
+    """
+    if not rounds or not values:
+        raise ValueError("rounds y values no pueden estar vacíos")
+    if len(rounds) != len(values):
+        raise ValueError("rounds y values deben tener la misma longitud")
+
+    filtered = [(r, v) for r, v in zip(rounds, values) if r >= start_round]
+    if not filtered:
+        return rounds[-1]
+
+    best_round = filtered[0][0]
+    best_value = filtered[0][1]
+    bad_rounds = 0
+
+    for current_round, current_value in filtered[1:]:
+        if current_value < (best_value - min_delta):
+            best_value = current_value
+            best_round = current_round
+            bad_rounds = 0
+        else:
+            bad_rounds += 1
+
+        if bad_rounds >= patience:
+            return best_round
+
+    return rounds[-1]
+
+
 def write_experiment_txt():
     exp_dir = api.get_experiment_dir()
     path = exp_dir / "metadata_experiment.txt"
 
     if path.exists():
         return  # no lo sobrescribas
+    
+    initialize_early_stopping_info()
 
     with open(path, "w") as f:
         f.write(f"EXPERIMENT ID: {api.get_exp_id()}\n")
@@ -98,6 +188,8 @@ def write_experiment_txt():
             f.write(f"\tBETA: {BETA}\n")
         f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
         f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+    
+
 
 
 def smooth_curve(points, factor=0.8):
@@ -787,6 +879,12 @@ class Trainer:
         controller_accuracies = []
         controller_losses = []
         while True:
+            if read_early_stopping_flag():
+                print(f"EARLY_STOPPING = True. Se devuelven los últimos parámetros agregados.")
+                child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
+                child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
+                break
+
             if batch_iterator is None:
                 batch_iterator = self.ops['child']['dataset'].as_numpy_iterator()
             try:

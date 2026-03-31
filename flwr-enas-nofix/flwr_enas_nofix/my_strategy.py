@@ -9,7 +9,21 @@ from datetime import timedelta
 import shutil
 
 
-from .task import PROJECT_PATH, NON_IID, ALPHA, DATASET_NAME, AGG_METHOD, ABLATION, BETA, NUM_NODES
+from .task import (PROJECT_PATH, 
+                NON_IID, 
+                ALPHA, 
+                DATASET_NAME, 
+                AGG_METHOD, 
+                ABLATION, 
+                BETA, 
+                NUM_NODES, 
+                read_early_stopping_flag,
+                write_early_stopping_flag,
+                early_stopping_best_round,
+                EARLY_STOPPING_START_ROUND,
+                EARLY_STOPPING_PATIENCE,
+                EARLY_STOPPING_MIN_DELTA)
+
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
 import time
@@ -38,6 +52,12 @@ class CustomFedProxPerformace(FedProx):
         self.weights_entropy = []
         self.effective_num_clients = None  # número efectivo de clientes en cada ronda
         self.prev_f1_by_client: dict[str, float] = {}  # Historial de F1 scores para cada cliente en cada ronda
+
+        self.last_parameters_aggregated = initial_parameters
+        self.last_loss_total = 0.0
+        self.last_metrics_aggregated = {}
+        self.global_valid_loss_history = []
+        self.global_round_history = []
 
     def performance_aggregate(
         self,
@@ -107,6 +127,10 @@ class CustomFedProxPerformace(FedProx):
         # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
         #     server_round, results, failures
         # )
+
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
+            return self.last_parameters_aggregated, {}
         
         if not results:
             return None, {}
@@ -141,6 +165,7 @@ class CustomFedProxPerformace(FedProx):
         #     fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
         #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
+        self.last_parameters_aggregated = parameters_aggregated
 
         return parameters_aggregated, metrics_aggregated
 
@@ -151,6 +176,18 @@ class CustomFedProxPerformace(FedProx):
         failures: list[BaseException],
     ) -> tuple[float, dict[str, float]]:
 
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING = True. Se devuelven los últimos parámetros agregados.")
+            if server_round == self.num_rounds:  # última ronda
+                exp_dir = api.get_experiment_dir()
+                path = exp_dir / "metadata_experiment.txt"
+                elapsed = time.time() - self.start_time
+                elapsed_td = timedelta(seconds=int(elapsed))
+                with open(path, "a") as f:
+                    f.write(f"Total training time: {elapsed_td} \n")
+                print(f"⏱ Total training time: {elapsed_td}")
+            return self.last_loss_total, self.last_metrics_aggregated
+        
         if not results:
             print(f"[Round {server_round}] No evaluation results received.")
             return None, {}
@@ -195,6 +232,26 @@ class CustomFedProxPerformace(FedProx):
             "Shannon_entropy": Shannon_entropy,
             "Effective_num_clients": round(self.effective_num_clients),
             **metrics_accum}
+        
+        # EarlyStopping con child_valid_loss global
+        current_valid_loss = metrics_accum.get("child_valid_loss", None)
+        if current_valid_loss is not None:
+            self.global_round_history.append(int(server_round))
+            self.global_valid_loss_history.append(float(current_valid_loss))
+
+            if server_round >= EARLY_STOPPING_START_ROUND:
+                best_round = early_stopping_best_round(
+                    rounds=self.global_round_history,
+                    values=self.global_valid_loss_history,
+                    patience=EARLY_STOPPING_PATIENCE,
+                    min_delta=EARLY_STOPPING_MIN_DELTA,
+                    start_round=EARLY_STOPPING_START_ROUND,
+                )
+
+                if best_round < server_round:
+                    print(f"[Round {server_round}] EarlyStopping detectado. Mejor ronda: {best_round}")
+                    write_early_stopping_flag(True)
+                    return self.last_loss_total, self.last_metrics_aggregated
 
         path = api.get_results_dir() / f"global_metrics.parquet"
         # table = pa.Table.from_pylist([global_results])
@@ -218,6 +275,9 @@ class CustomFedProxPerformace(FedProx):
                 print(f"  {k}: {v:.4f}")
             else:
                 print(f"  {k}: {v}")
+
+        self.last_metrics_aggregated = metrics_accum
+        self.last_loss_total = loss_total
 
         if server_round == self.num_rounds:  # última ronda
             exp_dir = api.get_experiment_dir()
@@ -243,6 +303,12 @@ class CustomFedProx(FedProx):
         self.start_time = time.time()
         self.num_rounds = num_rounds
 
+        self.last_parameters_aggregated = initial_parameters
+        self.last_loss_total = 0.0
+        self.last_metrics_aggregated = {}
+        self.global_valid_loss_history = []
+        self.global_round_history = []
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -251,9 +317,17 @@ class CustomFedProx(FedProx):
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
         """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING =True. Se devuelven los últimos parámetros agregados.")
+            return self.last_parameters_aggregated, self.last_metrics_aggregated
+        
         parameters_aggregated, metrics_aggregated = super().aggregate_fit(
             server_round, results, failures
         )
+
+        self.last_parameters_aggregated = parameters_aggregated
+        self.last_metrics_aggregated = metrics_aggregated
         
         return parameters_aggregated, metrics_aggregated
 
@@ -263,6 +337,18 @@ class CustomFedProx(FedProx):
         results: list[tuple[ClientProxy, EvaluateRes]],
         failures: list[BaseException],
     ) -> tuple[float, dict[str, float]]:
+        
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
+            if server_round == self.num_rounds:  # última ronda
+                exp_dir = api.get_experiment_dir()
+                path = exp_dir / "metadata_experiment.txt"
+                elapsed = time.time() - self.start_time
+                elapsed_td = timedelta(seconds=int(elapsed))
+                with open(path, "a") as f:
+                    f.write(f"Total training time: {elapsed_td} \n")
+                print(f"⏱ Total training time: {elapsed_td}")
+            return self.last_loss_total, self.last_metrics_aggregated
 
         if not results:
             print(f"[Round {server_round}] No evaluation results received.")
@@ -305,6 +391,26 @@ class CustomFedProx(FedProx):
             "CV_test": CV_clients_test, 
             "Jain_index_test": Jain_index_test,
             **metrics_accum}
+        
+        # EarlyStopping con child_valid_loss global
+        current_valid_loss = metrics_accum.get("child_valid_loss", None)
+        if current_valid_loss is not None:
+            self.global_round_history.append(int(server_round))
+            self.global_valid_loss_history.append(float(current_valid_loss))
+
+            if server_round >= EARLY_STOPPING_START_ROUND:
+                best_round = early_stopping_best_round(
+                    rounds=self.global_round_history,
+                    values=self.global_valid_loss_history,
+                    patience=EARLY_STOPPING_PATIENCE,
+                    min_delta=EARLY_STOPPING_MIN_DELTA,
+                    start_round=EARLY_STOPPING_START_ROUND,
+                )
+
+                if best_round < server_round:
+                    print(f"[Round {server_round}] EarlyStopping detectado. Mejor ronda: {best_round}")
+                    write_early_stopping_flag(True)
+                    return self.last_loss_total, self.last_metrics_aggregated
 
         path = api.get_results_dir() / f"global_metrics.parquet"
         # table = pa.Table.from_pylist([global_results])
@@ -328,6 +434,9 @@ class CustomFedProx(FedProx):
                 print(f"  {k}: {v:.4f}")
             else:
                 print(f"  {k}: {v}")
+        
+        self.last_metrics_aggregated = metrics_accum
+        self.last_loss_total = loss_total
 
         if server_round == self.num_rounds:  # última ronda
             exp_dir = api.get_experiment_dir()
@@ -354,6 +463,12 @@ class CustomFedAvg(FedAvg):
         self.start_time = time.time()
         self.num_rounds = num_rounds
 
+        self.last_parameters_aggregated = initial_parameters
+        self.last_loss_total = 0.0
+        self.last_metrics_aggregated = {}
+        self.global_valid_loss_history = []
+        self.global_round_history = []
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -362,10 +477,18 @@ class CustomFedAvg(FedAvg):
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
         """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
+            return self.last_parameters_aggregated, self.last_metrics_aggregated
+        
         parameters_aggregated, metrics_aggregated = super().aggregate_fit(
             server_round, results, failures
         )
-        
+
+        self.last_parameters_aggregated = parameters_aggregated
+        self.last_metrics_aggregated = metrics_aggregated
+
         return parameters_aggregated, metrics_aggregated
 
     def aggregate_evaluate(
@@ -374,6 +497,18 @@ class CustomFedAvg(FedAvg):
         results: list[tuple[ClientProxy, EvaluateRes]],
         failures: list[BaseException],
     ) -> tuple[float, dict[str, float]]:
+        
+        if read_early_stopping_flag():
+            print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
+            if server_round == self.num_rounds:  # última ronda
+                exp_dir = api.get_experiment_dir()
+                path = exp_dir / "metadata_experiment.txt"
+                elapsed = time.time() - self.start_time
+                elapsed_td = timedelta(seconds=int(elapsed))
+                with open(path, "a") as f:
+                    f.write(f"Total training time: {elapsed_td} \n")
+                print(f"⏱ Total training time: {elapsed_td}")
+            return self.last_loss_total, self.last_metrics_aggregated
 
         if not results:
             print(f"[Round {server_round}] No evaluation results received.")
@@ -416,6 +551,26 @@ class CustomFedAvg(FedAvg):
             "CV_test": CV_clients_test, 
             "Jain_index_test": Jain_index_test,
             **metrics_accum}
+        
+        # EarlyStopping con child_valid_loss global
+        current_valid_loss = metrics_accum.get("child_valid_loss", None)
+        if current_valid_loss is not None:
+            self.global_round_history.append(int(server_round))
+            self.global_valid_loss_history.append(float(current_valid_loss))
+
+            if server_round >= EARLY_STOPPING_START_ROUND:
+                best_round = early_stopping_best_round(
+                    rounds=self.global_round_history,
+                    values=self.global_valid_loss_history,
+                    patience=EARLY_STOPPING_PATIENCE,
+                    min_delta=EARLY_STOPPING_MIN_DELTA,
+                    start_round=EARLY_STOPPING_START_ROUND,
+                )
+
+                if best_round < server_round:
+                    print(f"[Round {server_round}] EarlyStopping detectado. Mejor ronda: {best_round}")
+                    write_early_stopping_flag(True)
+                    return self.last_loss_total, self.last_metrics_aggregated
 
         path = api.get_results_dir() / f"global_metrics.parquet"
         # table = pa.Table.from_pylist([global_results])
@@ -439,6 +594,9 @@ class CustomFedAvg(FedAvg):
                 print(f"  {k}: {v:.4f}")
             else:
                 print(f"  {k}: {v}")
+
+        self.last_metrics_aggregated = metrics_accum
+        self.last_loss_total = loss_total
 
         if server_round == self.num_rounds:  # última ronda
             exp_dir = api.get_experiment_dir()

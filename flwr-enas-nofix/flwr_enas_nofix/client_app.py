@@ -4,7 +4,16 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
 import json
 
-from flwr_enas_nofix.task import NUM_ROUNDS, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights, AGG_METHOD, ABLATION
+from flwr_enas_nofix.task import (NUM_ROUNDS, 
+                                  load_data, 
+                                  Trainer, 
+                                  ndarray_to_weights, 
+                                  weights_to_ndarrays, 
+                                  save_controller_weights, 
+                                  load_controller_weights, 
+                                  AGG_METHOD, 
+                                  ABLATION,
+                                  read_early_stopping_flag)
 import copy
 
 import experiment_api as exp_api
@@ -23,6 +32,7 @@ class FlowerClient(NumPyClient):
         self.partition_id = partition_id
         self.child_valid_acc = None
         self.child_test_acc = None
+        self.last_model_weights = None
         # Initialize context to know if it is the first time the model is used or not
         self.client_state = context.state
         if "client_info" not in self.client_state.config_records:
@@ -31,6 +41,20 @@ class FlowerClient(NumPyClient):
     def fit(self, parameters, config):
         actual_round = config["round"]
         client_info = self.client_state.config_records["client_info"] # Charge context
+
+        # Leer estado global de early stopping
+        if read_early_stopping_flag():
+
+            if self.last_model_weights is not None:
+                weights = self.last_model_weights
+            else:
+                weights = parameters
+
+            print(
+                f"[Client {self.partition_id}] EARLY_STOPPING = True en ronda {actual_round}. "
+                f"Se devuelven los últimos valores registrados."
+            )
+            return weights, len(self.data["images"]["train"]), {"valid_f1_score": client_info.get("last_valid_f1_score", 0.0)}
 
         if client_info["first_train"]:
             child_weights = None
@@ -88,7 +112,8 @@ class FlowerClient(NumPyClient):
             df = pd.concat([df_existing, df], ignore_index=True)
 
         df.to_parquet(path, engine="pyarrow", index=False)
-
+        self.last_model_weights = model_weights
+        
         return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
         # return {weights, num_examples, (results -> aggregate fit function)}
     
