@@ -38,7 +38,7 @@ num-classes = 10              # 10, 100, 10, 62
 agg_method = "custom"
 mu = 1.0
 ablation = false
-beta = 0.5
+beta = 0.25
 
 # [tool.flwr.federations]
 # default = "local-simulation"

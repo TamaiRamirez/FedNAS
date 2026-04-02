@@ -22,11 +22,11 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 # Experiment configurations
 #######################################
-NON_IID_LIST=(false true true)
-ALPHA_LIST=(0.0 1.0 0.5)
+NON_IID_LIST=(true true true)
+ALPHA_LIST=(1.0 0.5 0.1)
 AGG_LIST=("custom" "custom" "custom")
-MU_LIST=(0.0 0.01 0.1)
-BETA_LIST=(0.0 1.0 0.75)
+MU_LIST=(0.01 0.1 1.0)
+BETA_LIST=(1.0 0.75 0.25)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
@@ -86,6 +86,10 @@ for ((i=0; i<NUM_EXPS; i++)); do
   
   # Cleanup controller weights
   rm -rf "$EXP_DIR/controller_weights" 2>/dev/null || true
+
+  
+  echo "Running Selection Best ROUND..."
+  python3 "$BASE_DIR"/manual_early_stopping.py
   
   sleep 2
 done

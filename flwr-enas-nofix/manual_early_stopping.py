@@ -7,6 +7,9 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Iterable
 
+import experiment_api as exp_api
+import ablation_api as abla_api
+
 import pandas as pd
 
 
@@ -15,11 +18,11 @@ import pandas as pd
 # ============================================================
 
 BASE_DIR = Path("/workspace/flwr-enas-nofix/experiments")
-EXPERIMENT_IDS = ["20260330_3"] 
+EXPERIMENT_ID = [exp_api.get_exp_id()]  # type: ignore
 
 PATIENCE = 3
 MIN_DELTA = 0.0
-START_EARLY_STOPPING_ROUND = 27
+START_EARLY_STOPPING_ROUND = 30
 RANDOM_SEED = 42
 
 random.seed(RANDOM_SEED)
@@ -92,7 +95,7 @@ def early_stopping_best_round(
         if bad_rounds >= patience:
             return best_round
 
-    return rounds[-1]
+    return best_round
 
 
 def backup_file(path: Path, backup_path: Path) -> None:
@@ -286,7 +289,7 @@ def main(
 if __name__ == "__main__":
     main(
         base_dir=BASE_DIR,
-        experiment_ids=EXPERIMENT_IDS,
+        experiment_ids=EXPERIMENT_ID,
         patience=PATIENCE,
         min_delta=MIN_DELTA,
         start_round=START_EARLY_STOPPING_ROUND,
