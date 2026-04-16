@@ -5,6 +5,7 @@ flwr-cifar10-basic/flwr_cifar10_basic/checkpoints/
 flwr-enas-nofix/experiments/
 flwr-enas-nofix/ablation/
 flwr-enas-nofix/logs/
+flwr-enas-nofix/Plots/
 venv/
 mlruns/
 mlflow.db

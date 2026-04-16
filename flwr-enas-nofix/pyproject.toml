@@ -32,13 +32,13 @@ verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
 non_iid = true
 alpha = 0.1
-dataset = "uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
-dataset_name = "cifar10"      # cifar10, cifar100, mnist, femnist
+dataset = "ylecun/mnist"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
+dataset_name = "mnist"      # cifar10, cifar100, mnist, femnist
 num-classes = 10              # 10, 100, 10, 62  
 agg_method = "custom"
 mu = 1.0
 ablation = false
-beta = 0.25
+beta = 0.5
 
 # [tool.flwr.federations]
 # default = "local-simulation"

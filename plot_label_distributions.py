@@ -203,10 +203,6 @@ def _plot_heatmap(
     dpi: int,
     normalize: bool,
 ) -> None:
-    """
-    Heatmap cliente × clase, más compacto para datasets con muchas clases.
-    Colores: azul (menos ejemplos) -> rojo (más ejemplos).
-    """
     clients = sorted(split_df["partition_id"].unique().tolist())
     classes = sorted(split_df["class"].unique().tolist())
 
@@ -228,7 +224,6 @@ def _plot_heatmap(
             row_sums = pivot.sum(axis=1).replace(0, 1.0)
             pivot = pivot.div(row_sums, axis=0)
 
-        # Tamaño adaptativo
         fig_w = max(6, min(14, 0.12 * len(classes) + 3))
         fig_h = max(3.2, 0.75 * len(clients) + 1.5)
 
@@ -238,9 +233,11 @@ def _plot_heatmap(
             pivot.values,
             aspect="auto",
             interpolation="nearest",
-            cmap="coolwarm",   # azul -> rojo
-            origin="upper"
+            cmap="coolwarm",
+            origin="upper",
         )
+
+        ax.grid(False)
 
         ax.set_yticks(np.arange(len(clients)))
         ax.set_yticklabels([f"Client {c}" for c in clients], fontsize=8)
@@ -254,6 +251,9 @@ def _plot_heatmap(
         ax.set_ylabel("Client", fontsize=9)
         ax.set_title(f"Class distribution heatmap ({split})", fontsize=11)
 
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
         cbar = fig.colorbar(im, ax=ax)
         cbar.ax.tick_params(labelsize=8)
         cbar.set_label("Proportion" if normalize else "Number of Examples", fontsize=8)
@@ -262,9 +262,7 @@ def _plot_heatmap(
 
         title_suffix = "normalized" if normalize else "counts"
         png_path = output_dir / f"class_distribution_heatmap_{title_suffix}_{split}.png"
-        pdf_path = output_dir / f"class_distribution_heatmap_{title_suffix}_{split}.pdf"
         fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
-        fig.savefig(pdf_path, bbox_inches="tight")
         plt.close(fig)
 
 
@@ -288,7 +286,7 @@ if __name__ == "__main__":
     # experiment_dir = "/ruta/a/mi_experimento"
     
     
-    for exp_dir in ["20260324_1", "20260325_1", "20260325_2","20260326_1"]:
+    for exp_dir in ["20260409_1", "20260410_1", "20260410_2","20260411_1"]:
         plot_label_distributions_for_experiment(
             experiment_dir="/workspace/flwr-enas-nofix/experiments/"+exp_dir,
             output_dir=None,      # guarda dentro de label_distributions
