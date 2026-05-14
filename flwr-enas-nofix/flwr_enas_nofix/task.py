@@ -40,7 +40,8 @@ from functools import lru_cache
 import tomli
 from pathlib import Path
 
-from experiment_api import get_experiment_dir, get_exp_id, get_label_distributions_dir
+import experiment_api as exp_api
+import ablation_api as abla_api
 import pandas as pd
 
 # Make TensorFlow log less verbose
@@ -62,16 +63,112 @@ BATCH_SIZE = toml_config["tool"]["flwr"]["app"]["config"]["batch-size"]
 MU = toml_config["tool"]["flwr"]["app"]["config"]["mu"]
 NUM_ROUNDS = toml_config["tool"]["flwr"]["app"]["config"]["num-server-rounds"]
 NUM_NODES = toml_config["tool"]["flwr"]["app"]["config"]["num-nodes"]
+NUM_CLASSES = toml_config["tool"]["flwr"]["app"]["config"]["num-classes"]
+
+BETA = toml_config["tool"]["flwr"]["app"]["config"]["beta"]
+ABLATION = toml_config["tool"]["flwr"]["app"]["config"]["ablation"]
+
+api = abla_api if ABLATION else exp_api
+
+EARLY_STOPPING = False
+EARLY_STOPPING_START_ROUND = 27
+EARLY_STOPPING_PATIENCE = 3
+EARLY_STOPPING_MIN_DELTA = 0.0
+
+
+def get_early_stopping_info_path():
+    return api.get_controller_weights_dir() / "early_stoping_info.json"
+
+
+def initialize_early_stopping_info():
+    global EARLY_STOPPING
+    EARLY_STOPPING = False
+
+    path = get_early_stopping_info_path()
+    payload = {"EARLY_STOPPING": False}
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4)
+
+
+def read_early_stopping_flag():
+    global EARLY_STOPPING
+    path = get_early_stopping_info_path()
+
+    if not path.exists():
+        return EARLY_STOPPING
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        EARLY_STOPPING = bool(payload.get("EARLY_STOPPING", False))
+    except Exception:
+        pass
+
+    return EARLY_STOPPING
+
+
+def write_early_stopping_flag(value: bool):
+    global EARLY_STOPPING
+    EARLY_STOPPING = bool(value)
+
+    path = get_early_stopping_info_path()
+    payload = {"EARLY_STOPPING": EARLY_STOPPING}
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4)
+
+
+def early_stopping_best_round(
+    rounds: list[int],
+    values: list[float],
+    patience: int = EARLY_STOPPING_PATIENCE,
+    min_delta: float = EARLY_STOPPING_MIN_DELTA,
+    start_round: int = EARLY_STOPPING_START_ROUND,
+) -> int:
+    """
+    Early stopping para una métrica a minimizar.
+    Solo se evalúa desde start_round.
+    Devuelve la mejor ronda.
+    """
+    if not rounds or not values:
+        raise ValueError("rounds y values no pueden estar vacíos")
+    if len(rounds) != len(values):
+        raise ValueError("rounds y values deben tener la misma longitud")
+
+    filtered = [(r, v) for r, v in zip(rounds, values) if r >= start_round]
+    if not filtered:
+        return rounds[-1]
+
+    best_round = filtered[0][0]
+    best_value = filtered[0][1]
+    bad_rounds = 0
+
+    for current_round, current_value in filtered[1:]:
+        if current_value < (best_value - min_delta):
+            best_value = current_value
+            best_round = current_round
+            bad_rounds = 0
+        else:
+            bad_rounds += 1
+
+        if bad_rounds >= patience:
+            return best_round
+
+    return rounds[-1]
+
 
 def write_experiment_txt():
-    exp_dir = get_experiment_dir()
+    exp_dir = api.get_experiment_dir()
     path = exp_dir / "metadata_experiment.txt"
 
     if path.exists():
         return  # no lo sobrescribas
+    
+    initialize_early_stopping_info()
 
     with open(path, "w") as f:
-        f.write(f"EXPERIMENT ID: {get_exp_id()}\n")
+        f.write(f"EXPERIMENT ID: {api.get_exp_id()}\n")
         f.write(f"STATUS: VALID\n") # valid | failed | discarded | debug
         f.write("REASON: N/A\n\n")
         f.write(f"DATE: {datetime.now()}\n\n")
@@ -85,10 +182,14 @@ def write_experiment_txt():
         f.write(f"\tAGG_METHOD: {AGG_METHOD}\n")
         f.write(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
         f.write(f"\tNUM_NODES: {NUM_NODES}\n")
-        if AGG_METHOD != "fedavg":
+        if AGG_METHOD == "fedprox" or AGG_METHOD == "custom":
             f.write(f"\tMU: {MU}\n")
+        if AGG_METHOD == "custom":
+            f.write(f"\tBETA: {BETA}\n")
         f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
         f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+    
+
 
 
 def smooth_curve(points, factor=0.8):
@@ -206,12 +307,80 @@ def ndarray_to_weights(array_data, keys):
 
     return {key: fw.Variable(np.asarray(array_data[i]), name=key+":0",trainable=True) for i, key in enumerate(keys)}
 
+global_label_distribution = None
+
+
+def get_label_distribution(y, num_classes):
+    y = np.asarray(y, dtype=np.int32)
+    counts = np.bincount(y, minlength=num_classes).astype(np.float64)
+    probs = counts / counts.sum()
+    return probs
+
+
+def total_variation_distance(p, q):
+    p = np.asarray(p, dtype=np.float64)
+    q = np.asarray(q, dtype=np.float64)
+    return 0.5 * np.sum(np.abs(p - q))
+
+
+def init_global_label_distribution():
+    """
+    Calcula una sola vez la distribución global de etiquetas del split train completo.
+    """
+    global fds, global_label_distribution
+
+    if global_label_distribution is not None:
+        return global_label_distribution
+
+    full_train = fds.load_split("train")
+    full_train.set_format("numpy")
+
+    num_classes = NUM_CLASSES
+
+    if DATASET_NAME == "cifar100":
+        y_global = np.asarray(full_train["fine_label"], dtype=np.int32)
+    elif DATASET_NAME == "femnist":
+        y_global = np.asarray(full_train["character"], dtype=np.int32)
+    else:
+        y_global = np.asarray(full_train["label"], dtype=np.int32)
+
+    global_label_distribution = get_label_distribution(y_global, num_classes)
+    return global_label_distribution
+
+
+def compute_client_dis(y_local_raw):
+    """
+    Calcula:
+      - distribución local del cliente
+      - TV(local, global)
+      - dis_i = 1 + TV
+    usando las etiquetas originales del cliente.
+    """
+    num_classes = NUM_CLASSES
+    p_global = init_global_label_distribution()
+    p_local = get_label_distribution(y_local_raw, num_classes)
+    tv_i = total_variation_distance(p_local, p_global)
+    dis_i = 1.0 + tv_i
+    return dis_i, tv_i, p_local, p_global
 
 def load_data(partition_id, num_partitions):
     # Download and partition dataset
     # Only initialize `FederatedDataset` once
     global fds
     images, labels = {}, {}
+
+    def _to_32x32x3(x):
+        x = np.asarray(x)
+        if x.ndim == 4 and x.shape[-1] == 1:
+            x = x[..., 0]
+        if x.ndim != 3:
+            raise ValueError(f"Expected [N,H,W] or [N,H,W,1], got shape {x.shape}")
+        if x.shape[1] == 28 and x.shape[2] == 28:
+            x = np.pad(x, ((0, 0), (2, 2), (2, 2)), mode="constant")
+        elif x.shape[1] != 32 or x.shape[2] != 32:
+            raise ValueError(f"Expected spatial size 28x28 or 32x32, got {x.shape[1:3]}")
+        x = x[..., np.newaxis]
+        return np.repeat(x, 3, axis=-1)
 
     if DATASET_NAME == "cifar10":
         if fds is None:
@@ -248,9 +417,32 @@ def load_data(partition_id, num_partitions):
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
     
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
     
-        X_train = np.concatenate((train_set["img"], train_set["img"]), axis=0) 
-        y_train = np.concatenate((train_set["label"], train_set["label"]), axis=0)
+        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
+        y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(test_set["img"]) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
         
         
     elif DATASET_NAME == "cifar100":
@@ -263,7 +455,7 @@ def load_data(partition_id, num_partitions):
                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
                 # heterogeneity and ensuring each client has enough samples for stable
                 # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=6500,
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="fine_label", min_partition_size=1500,
                                                 self_balancing=True,
                                                 seed=42,
                                                 shuffle=True)
@@ -287,27 +479,156 @@ def load_data(partition_id, num_partitions):
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["fine_label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
         y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
         
-    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
-    images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-    images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-    
-    mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-    std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
 
-    # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-    # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
 
-    images["train"] = np.float32((images["train"] - mean) / std)
-    images["valid"] = np.float32((images["valid"] - mean) / std)
-    
-    # print(test_set["img"])
-    
-    images["test"] = np.float32(test_set["img"]) / 255.0
-    images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(test_set["img"]) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["fine_label"])
+
+    elif DATASET_NAME == "mnist":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        test_set = fds.load_split(split="test")
+        test_set.set_format("numpy")
+        # Shuffle test set
+        test_set = test_set.shuffle(seed=42)
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+        print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
+        X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
+        X_train = _to_32x32x3(X_train)
+        y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
+        
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = np.float32(_to_32x32x3(test_set["image"])) / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+
+    elif DATASET_NAME == "femnist":
+        if fds is None:
+            if NON_IID:
+                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+                # prevent empty or degenerate client datasets that could cause unstable
+                # training dynamics or inconsistent metric aggregation. 
+                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+                # heterogeneity and ensuring each client has enough samples for stable
+                # training and evaluation.
+                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="character", min_partition_size=1500,
+                                                self_balancing=True,
+                                                seed=42,
+                                                shuffle=True)
+            else:
+                partitioner = IidPartitioner(num_partitions=num_partitions)
+            fds = FederatedDataset(
+                dataset=DATASET,
+                partitioners={"train": partitioner},
+            )
+            
+        train_set = fds.load_partition(partition_id, "train")
+        train_set.set_format("numpy")
+
+        # Shuffle train set
+        train_set = train_set.shuffle(seed=42)
+
+        print("-" * 80)
+        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+
+        # >>> TVD START
+        y_local_raw = np.asarray(train_set["character"], dtype=np.int32)
+        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+        # >>> TVD END
+
+        X_train = np.array(train_set["image"])
+        X_train = _to_32x32x3(X_train)
+        y_train = np.array(train_set['character'])
+        
+        X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.3, random_state=42, stratify=y_train)
+
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=1/7, random_state=42, stratify=y_train)
+
+        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+        images["train"] = np.float32((images["train"] - mean) / std)
+        images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+        # print(test_set["img"])
+        
+        images["test"] = X_test / 255.0
+        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(y_test)
 
     print("Number of images in dataset (Train):", images["train"].shape[0])
     print("Number of images in dataset (Valid):", images["valid"].shape[0])
@@ -325,7 +646,7 @@ def load_data(partition_id, num_partitions):
             count = label_counts[label]
             print(f"  Class {label}: {count} samples")
             rows.append({
-                "exp_id": get_exp_id(),
+                "exp_id": api.get_exp_id(),
                 "partition_id": partition_id,
                 "dataset_name": DATASET_NAME,
                 "split": split,
@@ -339,14 +660,14 @@ def load_data(partition_id, num_partitions):
     df = pd.DataFrame(rows)
 
     df.to_parquet(
-        get_label_distributions_dir() / f"client_{partition_id}.parquet",
+        api.get_label_distributions_dir() / f"client_{partition_id}.parquet",
         engine="pyarrow",
         index=False,
     )
 
     # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
     
-    return {"images": images, "labels": labels}
+    return {"images": images, "labels": labels, "dis_i": dis_i}
     
 
         
@@ -400,7 +721,8 @@ class Trainer:
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
                 mu = 0.0,
-                learning_rate=self.learning_rate
+                learning_rate=self.learning_rate,
+                num_clases=NUM_CLASSES
             )
         
         else:
@@ -412,7 +734,8 @@ class Trainer:
                 child_weights=self.arch["child_weights"],
                 transfer=self.transfer,
                 mu = MU,
-                learning_rate=self.learning_rate
+                learning_rate=self.learning_rate,
+                num_clases=NUM_CLASSES
             )
         
         controller_ops = None
@@ -511,31 +834,32 @@ class Trainer:
         # tf.config.run_functions_eagerly(True)
         # tf.data.experimental.enable_debug_mode()
         # gc.collect()
-        # fw.clear_session()
+        fw.clear_session()
         FLAGS = flags.FLAGS
         # images, labels = data["images"], data["labels"]
-        if self.actual_round == 1:
-            print("*" * 80)
-            print("CONFIGURATION:")
-            print()
-            print(f"EXPERIMENT ID: {get_exp_id()}\n")
-            print(f"STATUS: VALID\n") # valid | failed | discarded | debug
-            print("REASON: N/A\n\n")
-            print(f"DATE: {datetime.now()}\n\n")
-            print(f"\tDATASET_NAME: {DATASET_NAME}\n")
-            if NON_IID:
-                print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
+        # if self.actual_round == 1:
+        #     print("*" * 80)
+        #     print("CONFIGURATION:")
+        #     print()
+        #     print(f"EXPERIMENT ID: {get_exp_id()}\n")
+        #     print(f"STATUS: VALID\n") # valid | failed | discarded | debug
+        #     print("REASON: N/A\n\n")
+        #     print(f"DATE: {datetime.now()}\n\n")
+        #     print(f"\tDATASET_NAME: {DATASET_NAME}\n")
+        #     if NON_IID:
+        #         print(f"\tDATA PARTITIONING: Non-IID with alpha={ALPHA}\n")
             
-            else:
-                print(f"\tDATA PARTITIONING: IID\n")
-            print(f"\tAGG_METHOD: {AGG_METHOD}\n")
-            print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
-            print(f"\tNUM_NODES: {NUM_NODES}\n")
-            if AGG_METHOD != "fedavg":
-                print(f"\tMU: {MU}\n")
-            print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
-            print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
-            print("*" * 80)
+        #     else:
+        #         print(f"\tDATA PARTITIONING: IID\n")
+        #     print(f"\tAGG_METHOD: {AGG_METHOD}\n")
+        #     print(f"\tNUM_ROUNDS: {NUM_ROUNDS}\n")
+        #     print(f"\tNUM_NODES: {NUM_NODES}\n")
+        #     if AGG_METHOD != "fedavg":
+        #         print(f"\tMU: {MU}\n")
+        #     print(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
+        #     print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+        #     print("*" * 80)
+        
         self.get_ops()
         batch_iterator = None
 
@@ -555,6 +879,12 @@ class Trainer:
         controller_accuracies = []
         controller_losses = []
         while True:
+            if read_early_stopping_flag():
+                print(f"EARLY_STOPPING = True. Se devuelven los últimos parámetros agregados.")
+                child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
+                child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
+                break
+
             if batch_iterator is None:
                 batch_iterator = self.ops['child']['dataset'].as_numpy_iterator()
             try:

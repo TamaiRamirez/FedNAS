@@ -43,7 +43,7 @@ def server_fn(context: Context):
             on_fit_config_fn=fit_config,
             proximal_mu = MU
         )
-    else:
+    elif AGG_METHOD == "custom":
         strategy = CustomFedProxPerformace(
             num_rounds=num_rounds,
             fraction_fit=1.0,

@@ -74,7 +74,7 @@ class WeightRegistry(object):
   def get(self, reuse: bool, scope, name, shape, initializer, trainable=True):
     if not reuse:
       self.weight_map[scope + name] = self.create_weight(scope, name, shape, initializer=initializer, trainable=trainable)
-      #print(f"Scope+name: {scope + name} | Weight_map: \n {self.weight_map}")
+      # print(f"Scope+name: {scope + name} | Weight_map: \n {self.weight_map}")
     return self.weight_map[scope + name]
 
 

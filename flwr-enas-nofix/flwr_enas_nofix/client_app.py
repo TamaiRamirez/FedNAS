@@ -4,12 +4,24 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context, ConfigRecord
 import json
 
-from flwr_enas_nofix.task import NUM_ROUNDS, load_data, Trainer, ndarray_to_weights, weights_to_ndarrays, save_controller_weights, load_controller_weights
+from flwr_enas_nofix.task import (NUM_ROUNDS, 
+                                  load_data, 
+                                  Trainer, 
+                                  ndarray_to_weights, 
+                                  weights_to_ndarrays, 
+                                  save_controller_weights, 
+                                  load_controller_weights, 
+                                  AGG_METHOD, 
+                                  ABLATION,
+                                  read_early_stopping_flag)
 import copy
 
-from experiment_api import get_controller_weights_dir, get_results_dir, get_exp_id
+import experiment_api as exp_api
+import ablation_api as abla_api
 import pandas as pd
 import math
+
+api = abla_api if ABLATION else exp_api
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -20,6 +32,7 @@ class FlowerClient(NumPyClient):
         self.partition_id = partition_id
         self.child_valid_acc = None
         self.child_test_acc = None
+        self.last_model_weights = None
         # Initialize context to know if it is the first time the model is used or not
         self.client_state = context.state
         if "client_info" not in self.client_state.config_records:
@@ -29,6 +42,20 @@ class FlowerClient(NumPyClient):
         actual_round = config["round"]
         client_info = self.client_state.config_records["client_info"] # Charge context
 
+        # Leer estado global de early stopping
+        if read_early_stopping_flag():
+
+            if self.last_model_weights is not None:
+                weights = self.last_model_weights
+            else:
+                weights = parameters
+
+            print(
+                f"[Client {self.partition_id}] EARLY_STOPPING = True en ronda {actual_round}. "
+                f"Se devuelven los últimos valores registrados."
+            )
+            return weights, len(self.data["images"]["train"]), {"valid_f1_score": client_info.get("last_valid_f1_score", 0.0)}
+
         if client_info["first_train"]:
             child_weights = None
             controller_weights = None
@@ -36,10 +63,13 @@ class FlowerClient(NumPyClient):
         else:
             child_keys = client_info.get("child_weights_keys", None)
             child_weights = ndarray_to_weights(parameters, child_keys)
-            controller_weights = load_controller_weights(get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
+            controller_weights = load_controller_weights(api.get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
             transfer = True
         
-        lr = 0.025 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
+        if ABLATION:
+            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (40 - 1))) # Because in experiments I run for 40 rounds, but in ablation I run for 20 rounds, so I adjust the learning rate schedule accordingly to have a similar decay.
+        else:
+            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
         
         trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": controller_weights}, transfer, actual_round, self.partition_id, learning_rate=lr)
         result = trainer.train()
@@ -54,14 +84,14 @@ class FlowerClient(NumPyClient):
         client_info["last_valid_f1_score"] = result["child_valid_f1_score"]
         client_info["last_test_f1_score"] = result["child_test_f1_score"]
         client_info["child_weights_keys"] = child_keys
-        save_controller_weights(result["controller_trainable_variables"], get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
+        save_controller_weights(result["controller_trainable_variables"], api.get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
 
         # print(f"[FIT] child_valid_acc={result["child_valid_acc"]}, child_test_acc={result["child_test_acc"]}")
 
         client_info["first_train"] = False
 
         results_client = {
-            "exp_id": get_exp_id(),
+            "exp_id": api.get_exp_id(),
             "round": actual_round,
             "client_id": self.partition_id,
             "val_accuracy": result["child_valid_acc"],
@@ -74,7 +104,7 @@ class FlowerClient(NumPyClient):
             "size_model": len(result["child_trainable_variables"]) * 4 / (1024 * 1024)
         }
         
-        path = get_results_dir() / f"client_{self.partition_id}.parquet"
+        path = api.get_results_dir() / f"client_{self.partition_id}.parquet"
         df = pd.DataFrame([results_client])
         
         if path.exists():
@@ -82,9 +112,12 @@ class FlowerClient(NumPyClient):
             df = pd.concat([df_existing, df], ignore_index=True)
 
         df.to_parquet(path, engine="pyarrow", index=False)
+        self.last_model_weights = model_weights
+        
+        return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
+        # return {weights, num_examples, (results -> aggregate fit function)}
 
-        return model_weights, len(model_weights), {"valid_f1_score": result["child_valid_f1_score"]}
-        # return {weights, size of weights, (results -> aggregate fit function)}
+    """This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]
@@ -94,7 +127,7 @@ class FlowerClient(NumPyClient):
         test_loss = client_info.get("last_test_loss", 0.0)
         test_f1_score = client_info.get("last_test_f1_score", 0.0)
         valid_f1_score = client_info.get("last_valid_f1_score", 0.0)
-        return test_loss, len(self.data["images"]["test"]), {
+        return valid_loss, len(self.data["images"]["valid"]), {
             "child_valid_acc": valid_acc,
             "child_valid_loss": valid_loss,
             "child_valid_f1_score": valid_f1_score,

@@ -10,7 +10,7 @@ from flwr_enas_nofix.src.utils import LearningRate, ClipMode, Optimizer, Layered
 from flwr_enas_nofix.src.cifar10.image_ops import BatchNorm
 
 
-DEFINE_integer("batch_size", 64, "")
+DEFINE_integer("batch_size", 128, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
 DEFINE_integer("child_num_layers", 14, "")
 DEFINE_string("child_fixed_arc", None, "")
@@ -162,7 +162,7 @@ class Child(object):
                optim_algo=None,
                name="generic_model",
                seed=None,
-               learning_rate=None
+               learning_rate=None,num_clases=10
               ):
     """
     Args:
@@ -178,7 +178,7 @@ class Child(object):
     self.fixed_arc = FLAGS.child_fixed_arc
     self.out_filters = FLAGS.child_out_filters
     self.batch_size = FLAGS.batch_size
-
+    self.num_classes = num_clases
     self.eval_batch_size = eval_batch_size
     self.clip_mode = ClipMode.new(clip_mode, FLAGS.child_grad_bound)
     self.l2_reg = FLAGS.child_l2_reg

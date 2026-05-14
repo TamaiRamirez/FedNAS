@@ -1,5 +1,5 @@
 # Include a base image
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 # Add vscode user with same UID and GID as your host system
 # (copied from https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user#_creating-a-nonroot-user)
 
@@ -16,13 +16,16 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 
+# Switch from root to user
+USER $USERNAME
+
 # Update all packages
-RUN apt update
+RUN sudo apt update && sudo apt upgrade -y
 
 # Install Git, vim, and nano
-RUN apt install -y git vim nano
+RUN sudo apt install -y git vim nano
 
-RUN apt install -y \
+RUN sudo apt install -y \
     build-essential \
     python3-dev \
     python3-pip \
@@ -36,72 +39,19 @@ RUN apt install -y \
     ffmpeg \
     libsm6 \
     libxext6 \
-    && rm -rf /var/lib/apt/lists/*
+    libgl1-mesa-glx
+
+RUN pip install -U tensorflow[and-cuda]
+RUN pip install -U absl-py
+RUN pip install -U tensorboard
+RUN pip install -U scikit-learn
+RUN pip install -U np_utils
+RUN pip install -U matplotlib
+RUN pip install -U pandas
+RUN pip install -U flwr[simulation]
+RUN pip install -U flwr-datasets[vision]
+RUN pip install -U hydra-core
+RUN pip install -U memory_profiler
+RUN pip install -U mlflow
 
 USER $USERNAME
-
-RUN python3 -m venv /home/$USERNAME/FedNAS/venv
-ENV PATH="/home/$USERNAME/FedNAS/venv/bin:$PATH"
-
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir absl-py scikit-learn np_utils pandas hydra-core memory_profiler tensorflow[and-cuda] flwr[simulation] flwr-datasets[vision]
-
-
-
-# # Include a base image
-# FROM ubuntu:24.04
-
-# # Add vscode user with same UID and GID as your host system
-# ARG USERNAME
-# ARG USER_UID
-# ARG USER_GID=$USER_UID
-# ARG DEBIAN_FRONTEND=noninteractive
-
-# RUN groupadd --gid $USER_GID $USERNAME \
-#     && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
-#     && apt-get update \
-#     && apt-get install -y sudo \
-#     && echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
-#     && chmod 0440 /etc/sudoers.d/$USERNAME
-
-# # Switch from root to user
-# USER $USERNAME
-
-# # Update all packages
-# RUN sudo apt update && sudo apt upgrade -y
-
-# # Install Git, vim, and nano
-# RUN sudo apt install -y git vim nano
-
-# # Install Python and dependencies (NO pip from apt!)
-# RUN sudo apt install -y \
-#     build-essential \
-#     python3-dev \
-#     python3-venv \
-#     python3-pip \
-#     libopenblas-dev \
-#     liblapack-dev \
-#     libjpeg-dev \
-#     libpng-dev \
-#     libprotobuf-dev \
-#     protobuf-compiler \
-#     ffmpeg \
-#     libsm6 \
-#     libxext6 \
-#     curl
-
-# # Create virtual environment and activate it
-# RUN python3 -m venv /home/$USERNAME/FedNAS/venv
-# ENV PATH="/home/$USERNAME/FedNAS/venv/bin:$PATH"
-
-# # Upgrade pip in venv
-# RUN pip install --upgrade pip
-
-# # Install ML/Data Science packages in batches
-# RUN pip install --no-cache-dir absl-py tensorboard scikit-learn
-# RUN pip install --no-cache-dir matplotlib pandas
-# RUN pip install --no-cache-dir "flwr[simulation]>=1.18.1" "flwr-datasets[vision]>=0.5.0" "tensorflow[and-cuda]==2.17.0"
-# # Install utilities
-# RUN pip install --no-cache-dir hydra-core memory_profiler
-
-# USER $USERNAME

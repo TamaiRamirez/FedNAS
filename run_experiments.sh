@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)
 set -euo pipefail
 ulimit -c 0
 
@@ -22,10 +23,11 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 # Experiment configurations
 #######################################
-NON_IID_LIST=(false)
-ALPHA_LIST=(0.0)
-AGG_LIST=("fedavg")
-MU_LIST=(0.0)
+NON_IID_LIST=(false true true true)
+ALPHA_LIST=(0.0 1.0 0.5 0.1)
+AGG_LIST=("custom" "custom" "custom" "custom")
+MU_LIST=(0.0 0.01 0.1 1.0)
+BETA_LIST=(0.5 0.5 0.5 0.5)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
@@ -43,6 +45,7 @@ update_project_toml() {
     -e "s/^alpha = .*/alpha = ${2}/" \
     -e "s/^agg_method = .*/agg_method = \"${3}\"/" \
     -e "s/^mu = .*/mu = ${4}/" \
+    -e "s/^beta = .*/beta = ${5}/" \
     "$PROJECT_TOML"
 }
 
@@ -59,7 +62,8 @@ for ((i=0; i<NUM_EXPS; i++)); do
     "${NON_IID_LIST[$i]}" \
     "${ALPHA_LIST[$i]}" \
     "${AGG_LIST[$i]}" \
-    "${MU_LIST[$i]}"
+    "${MU_LIST[$i]}" \
+    "${BETA_LIST[$i]}"
 
   #######################################
   # Create experiment
@@ -83,6 +87,10 @@ for ((i=0; i<NUM_EXPS; i++)); do
   
   # Cleanup controller weights
   rm -rf "$EXP_DIR/controller_weights" 2>/dev/null || true
+
+  
+  echo "Running Selection Best ROUND..."
+  python3 "$BASE_DIR"/manual_early_stopping.py
   
   sleep 2
 done

@@ -53,7 +53,8 @@ class MacroChild(Child):
                child_weights = None,
                transfer = False,
                mu = None,
-               learning_rate=0.05
+               learning_rate=0.05,
+               num_clases=10,
               ):
     super(self.__class__, self).__init__(
       images,
@@ -63,7 +64,7 @@ class MacroChild(Child):
       optim_algo=optim_algo,
       seed=seed,
       name=name,
-      learning_rate=learning_rate)
+      learning_rate=learning_rate, num_clases=num_clases)
     FLAGS = flags.FLAGS
     self.whole_channels = FLAGS.controller_search_whole_channels
     self.lr_min = lr_min
@@ -75,7 +76,9 @@ class MacroChild(Child):
     self.mu = mu
     
     if self.transfer:
-      self.global_weights = copy.deepcopy(child_weights)
+      # Transfer weights from global model to child model
+      self.global_weights = fw.WeightRegistry()
+      self.global_weights.weight_map = copy.deepcopy(child_weights)
       self.weights.weight_map = copy.deepcopy(child_weights)
 
     
@@ -110,12 +113,12 @@ class MacroChild(Child):
 
 
   class Dropout(LayeredModel):
-    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_inp_chan: int):
+    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_inp_chan: int, num_classes=10):
       w = weights.get(
         reuse,
         scope,
         "w",
-        [num_inp_chan, 10],
+        [num_inp_chan, num_classes],
         None)
       def matmul(x):
         return fw.matmul(x, w)
@@ -175,7 +178,7 @@ class MacroChild(Child):
             child.weights,
             reuse,
             scope,
-            layers_channels[-1])
+            layers_channels[-1], num_classes=child.num_classes)
         # print(f"CHILD TRAINABLE VARIABLES: \n {child.trainable_variables()}")
         # print(f"CHILD WEIGHTS: \n {child.weights.weight_map}")
         print("Model has {0} params".format(count_model_params(child.trainable_variables())))
@@ -882,7 +885,6 @@ class MacroChild(Child):
   class Loss(LayeredModel):
     def __init__(self):
       def sscewl(logits, labels):
-        
         return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 
       self.layers = [sscewl, fw.reduce_mean]
@@ -1036,7 +1038,7 @@ class MacroChild(Child):
       if self.transfer:
         keys = list(self.weights.weight_map.keys())
         for key in keys:
-          diff = self.weights.weight_map[key] - self.global_weights[key]
+          diff = self.weights.weight_map[key] - self.global_weights.weight_map[key]
           proximal_term += fw.reduce_sum(fw.square(diff))
 
       # fw.print("Prox:", (self.mu/2) * proximal_term)
