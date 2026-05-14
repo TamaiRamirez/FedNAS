@@ -5,3 +5,13 @@ flwr-cifar10-basic/flwr_cifar10_basic/checkpoints/
 flwr-enas-nofix/experiments/
 flwr-enas-nofix/logs/
 venv/
+
+__pycache__/
+flwr-enas-nofix/__pycache__/
+flwr-enas-nofix/Plots/
+flwr-enas-nofix/ablation/
+mlflow.db
+mlruns/
+notas.txt
+solucion-inicidente-docker.txt
+Dockerfile.bak
