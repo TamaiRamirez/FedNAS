@@ -276,6 +276,7 @@ def combine_experiments_by_metric(experiments: List[Dict], metric: str) -> Dict[
 
     return combined
 
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 
 # =========================
 # PLOTEO
@@ -324,16 +325,18 @@ def plot_metric_for_scenario(
         plt.close()
         return
 
-    plt.title(f"{scenario} - {metric}")
-    plt.xlabel("Round")
-    plt.ylabel(metric)
+    # plt.title(f"{scenario} - {metric}")
+    plt.xlabel("Round", fontsize=20)
+    plt.ylabel("Value", fontsize=20)
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
     plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend()
+    plt.legend(fontsize=20)
     plt.tight_layout()
 
     filename = f"{scenario}_{sanitize_metric_name(metric)}.png"
     output_path = output_dir / filename
-    plt.savefig(output_path, dpi=600, bbox_inches="tight")
+    plt.savefig(output_path, dpi=400, bbox_inches="tight")
     plt.close()
 
     print(f"[OK] Guardado: {output_path}")
@@ -390,5 +393,6 @@ def generate_global_metric_plots(dataset_name: str, root_dir: Path = EXPERIMENTS
 
 if __name__ == "__main__":
     # Cambia aquí el dataset que quieres procesar
-    dataset = "cifar10"
-    generate_global_metric_plots(dataset)
+    dataset = ["cifar10"]  # Puedes añadir más datasets a esta lista
+    for dataset_name in dataset:
+        generate_global_metric_plots(dataset_name)

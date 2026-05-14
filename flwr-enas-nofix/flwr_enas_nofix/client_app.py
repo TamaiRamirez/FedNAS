@@ -116,6 +116,8 @@ class FlowerClient(NumPyClient):
         
         return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
         # return {weights, num_examples, (results -> aggregate fit function)}
+
+    """This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]

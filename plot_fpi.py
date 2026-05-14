@@ -5,7 +5,7 @@ import re
 import math
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -17,6 +17,15 @@ EPSILON = 1e-12
 ALPHA = 0.1
 BETA = 0.25
 GAMMA = 0.65
+
+SENSITIVITY_WEIGHTS = [
+    (0.10, 0.25, 0.65),
+    (0.10, 0.30, 0.60),
+    (0.15, 0.25, 0.60),
+    (0.05, 0.30, 0.65),
+    (0.10, 0.20, 0.70),
+    (0.20, 0.30, 0.50),
+]
 
 VALID_METHODS = {"fedavg", "fedprox", "custom"}
 
@@ -39,13 +48,13 @@ def set_plot_style() -> None:
     plt.rcParams.update({
         "figure.figsize": (13, 5),
         "figure.dpi": 120,
-        "savefig.dpi": 300,
-        "font.size": 11,
+        "savefig.dpi": 400,
+        "font.size": 20,
         "axes.titlesize": 12,
-        "axes.labelsize": 11,
-        "legend.fontsize": 10,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
+        "axes.labelsize": 20,
+        "legend.fontsize": 20,
+        "xtick.labelsize": 20,
+        "ytick.labelsize": 20,
         "axes.linewidth": 0.8,
         "lines.linewidth": 2.0,
         "lines.markersize": 4,
@@ -96,6 +105,7 @@ def parse_metadata_file(metadata_path: Path) -> Optional[Dict[str, str]]:
 def normalize_dataset_name(name: str) -> str:
     return name.strip().lower()
 
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 
 def parse_scenario(data_partitioning: str) -> Optional[str]:
     value = data_partitioning.strip()
@@ -193,6 +203,9 @@ def compute_round_fpi_stats(
     clients_df: pd.DataFrame,
     score_col: str,
     loss_col: str,
+    alpha: float = ALPHA,
+    beta: float = BETA,
+    gamma: float = GAMMA,
 ) -> pd.DataFrame:
     """
     Calcula por ronda:
@@ -224,9 +237,9 @@ def compute_round_fpi_stats(
         mu_component = max(mu_f, 0.0)
 
         fpi = (
-            (mu_component ** ALPHA)
-            * ((1.0 / (1.0 + loss_f)) ** BETA)
-            * ((1.0 / (1.0 + cv_f)) ** GAMMA)
+            (mu_component ** alpha)
+            * ((1.0 / (1.0 + loss_f)) ** beta)
+            * ((1.0 / (1.0 + cv_f)) ** gamma)
         )
 
         worst_idx = scores.idxmin()
@@ -247,52 +260,108 @@ def compute_round_fpi_stats(
     return pd.DataFrame(rows).sort_values("round").reset_index(drop=True)
 
 
-def plot_scenario_fpi(
+def plot_scenario_fpi_metric(
     scenario: str,
     scenario_results: Dict[str, Dict[str, pd.DataFrame]],
+    metric_key: str,
     output_path: Path
 ) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharex=False)
+    fig, ax = plt.subplots(figsize=(10, 7))
 
-    metric_titles = {
-        "val_f1_score": "Validation FPI",
-        "test_f1_score": "Test FPI",
-    }
+    for method in ["fedavg", "fedprox", "custom"]:
+        df = scenario_results.get(method, {}).get(metric_key)
+        if df is None or df.empty:
+            continue
 
-    for ax, metric_key in zip(axes, ["val_f1_score", "test_f1_score"]):
-        for method in ["fedavg", "fedprox", "custom"]:
-            df = scenario_results.get(method, {}).get(metric_key)
-            if df is None or df.empty:
-                continue
-
-            ax.plot(
-                df["round"],
-                df["fpi"],
-                marker="o",
-                linewidth=2.0,
-                markersize=4,
-                color=METHOD_COLORS[method],
-                label=METHOD_DISPLAY[method]
-            )
-
-        ax.set_title(metric_titles[metric_key], pad=8)
-        ax.set_xlabel("Round")
-        ax.set_ylabel("FPI")
-        ax.set_ylim(bottom=0)
-        ax.grid(True, linestyle="--", alpha=0.3)
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    if handles:
-        fig.legend(
-            handles,
-            labels,
-            loc="upper center",
-            ncol=3,
-            bbox_to_anchor=(0.5, 1.04),
-            frameon=True
+        ax.plot(
+            df["round"],
+            df["fpi"],
+            marker="o",
+            linewidth=2.0,
+            markersize=4,
+            color=METHOD_COLORS[method],
+            label=METHOD_DISPLAY[method]
         )
 
-    fig.suptitle(f"Fairness-Performance Index — {scenario_pretty_name(scenario)}", y=1.08, fontsize=13)
+    # ax.set_title(metric_title, pad=8)
+    ax.set_xlabel("Round", fontsize=20)
+    ax.set_ylabel("FPI", fontsize=20)
+    ax.tick_params(axis="both", which="major", labelsize=20)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, linestyle="--", alpha=0.3)
+
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(
+            handles,
+            labels,
+            loc="best",
+            ncol=1,
+            fontsize=20,
+            frameon=True,
+            handlelength=2.2,
+            borderaxespad=0.8,
+            borderpad=0.6,
+            labelspacing=0.5,
+        )
+
+    # fig.suptitle(f"Fairness-Performance Index — {scenario_pretty_name(scenario)}", y=1.08, fontsize=13)
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def format_weight_for_filename(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def plot_sensitivity_test_fpi(
+    scenario_results_all: Dict[str, Dict[str, Dict[str, pd.DataFrame]]],
+    weights: Tuple[float, float, float],
+    output_path: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(10, 7))
+    scenario_results = scenario_results_all.get("Non_IID_0.5", {})
+
+    for method in ["fedavg", "fedprox", "custom"]:
+        df = scenario_results.get(method, {}).get("test_f1_score")
+        if df is None or df.empty:
+            continue
+
+        ax.plot(
+            df["round"],
+            df["fpi"],
+            marker="o",
+            linewidth=2.0,
+            markersize=4,
+            color=METHOD_COLORS[method],
+            label=METHOD_DISPLAY[method],
+        )
+
+    ax.set_xlabel("Round", fontsize=20)
+    ax.set_ylabel("FPI", fontsize=20)
+    ax.tick_params(axis="both", which="major", labelsize=20)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, linestyle="--", alpha=0.3)
+
+    handles, labels = ax.get_legend_handles_labels()
+
+    if handles:
+        ax.legend(
+            handles,
+            labels,
+            loc="best",
+            ncol=1,
+            fontsize=20,
+            frameon=True,
+            handlelength=2.2,
+            borderaxespad=0.8,
+            borderpad=0.6,
+            labelspacing=0.5,
+        )
+
+    alpha, beta, gamma = weights
+    # fig.suptitle(f"Test FPI sensitivity: alpha={alpha:.2f}, beta={beta:.2f}, gamma={gamma:.2f}", fontsize=20)
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
@@ -346,7 +415,87 @@ def build_last_round_summary(
     return pd.DataFrame(rows)
 
 
-def main(root_dir: str, dataset_name: str) -> None:
+def build_scenario_results(
+    experiments: Dict[str, Dict[str, Path]],
+    include_validation: bool = True,
+    alpha: float = ALPHA,
+    beta: float = BETA,
+    gamma: float = GAMMA,
+) -> Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
+    scenario_results_all: Dict[str, Dict[str, Dict[str, pd.DataFrame]]] = {}
+
+    for scenario in SCENARIO_ORDER:
+        if scenario not in experiments:
+            continue
+
+        scenario_results_all.setdefault(scenario, {})
+
+        for method, exp_path in experiments[scenario].items():
+            results_dir = exp_path / "results"
+            clients_df = load_experiment_clients(results_dir)
+            if clients_df is None or clients_df.empty:
+                continue
+
+            test_df = compute_round_fpi_stats(
+                clients_df=clients_df,
+                score_col="test_f1_score",
+                loss_col="test_loss",
+                alpha=alpha,
+                beta=beta,
+                gamma=gamma,
+            )
+
+            scenario_results_all[scenario][method] = {
+                "test_f1_score": test_df,
+            }
+
+            if include_validation:
+                val_df = compute_round_fpi_stats(
+                    clients_df=clients_df,
+                    score_col="val_f1_score",
+                    loss_col="val_loss",
+                    alpha=alpha,
+                    beta=beta,
+                    gamma=gamma,
+                )
+                scenario_results_all[scenario][method]["val_f1_score"] = val_df
+
+    return scenario_results_all
+
+
+def run_sensitivity_analysis(
+    experiments: Dict[str, Dict[str, Path]],
+    output_dir: Path,
+) -> None:
+    sensitivity_dir = output_dir / "Sensitivity_analisis"
+    sensitivity_dir.mkdir(parents=True, exist_ok=True)
+    sensitivity_experiments = {
+        "Non_IID_0.5": experiments.get("Non_IID_0.5", {})
+    }
+
+    if not sensitivity_experiments["Non_IID_0.5"]:
+        print("[INFO] No se encontraron experimentos para Non-IID with alpha=0.5.")
+        return
+
+    for weights in SENSITIVITY_WEIGHTS:
+        alpha, beta, gamma = weights
+        scenario_results_all = build_scenario_results(
+            sensitivity_experiments,
+            include_validation=False,
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
+        )
+
+        alpha_str = format_weight_for_filename(alpha)
+        beta_str = format_weight_for_filename(beta)
+        gamma_str = format_weight_for_filename(gamma)
+        plot_path = sensitivity_dir / f"fpi_{alpha_str}_{beta_str}_{gamma_str}.png"
+        plot_sensitivity_test_fpi(scenario_results_all, weights, plot_path)
+        print(f"[OK] Guardado sensitivity plot: {plot_path}")
+
+
+def main(root_dir: str, dataset_name: str, sensitivity: bool = False) -> None:
     set_plot_style()
 
     root = Path(root_dir).resolve()
@@ -362,41 +511,31 @@ def main(root_dir: str, dataset_name: str) -> None:
         print(f"No se encontraron experimentos VALID para el dataset '{dataset_name}'.")
         return
 
-    scenario_results_all: Dict[str, Dict[str, Dict[str, pd.DataFrame]]] = {}
+    if sensitivity:
+        run_sensitivity_analysis(experiments, output_dir)
+        return
+
+    scenario_results_all = build_scenario_results(experiments)
 
     for scenario in SCENARIO_ORDER:
-        if scenario not in experiments:
+        if scenario not in scenario_results_all:
             continue
 
-        scenario_results_all.setdefault(scenario, {})
-
-        for method, exp_path in experiments[scenario].items():
-            results_dir = exp_path / "results"
-            clients_df = load_experiment_clients(results_dir)
-            if clients_df is None or clients_df.empty:
-                continue
-
-            val_df = compute_round_fpi_stats(
-                clients_df=clients_df,
-                score_col="val_f1_score",
-                loss_col="val_loss",
-            )
-
-            test_df = compute_round_fpi_stats(
-                clients_df=clients_df,
-                score_col="test_f1_score",
-                loss_col="test_loss",
-            )
-
-            scenario_results_all[scenario][method] = {
-                "val_f1_score": val_df,
-                "test_f1_score": test_df,
+        if scenario_results_all[scenario]:
+            plots_to_generate = {
+                "validation": "val_f1_score",
+                "test": "test_f1_score",
             }
 
-        if scenario_results_all[scenario]:
-            plot_path = output_dir / f"{scenario}_fpi.png"
-            plot_scenario_fpi(scenario, scenario_results_all[scenario], plot_path)
-            print(f"[OK] Guardado plot: {plot_path}")
+            for split_name, metric_key in plots_to_generate.items():
+                plot_path = output_dir / f"{scenario}_fpi_{split_name}.png"
+                plot_scenario_fpi_metric(
+                    scenario,
+                    scenario_results_all[scenario],
+                    metric_key,
+                    plot_path,
+                )
+                print(f"[OK] Guardado plot: {plot_path}")
 
     summary_df = build_last_round_summary(scenario_results_all)
     csv_path = output_dir / f"{dataset_name}_fpi_last_round.csv"
@@ -420,6 +559,11 @@ if __name__ == "__main__":
         required=True,
         help='Nombre del dataset, por ejemplo: "cifar10"'
     )
+    parser.add_argument(
+        "--sensitivity",
+        action="store_true",
+        help="Activa el sensitivity analysis variando alpha, beta y gamma solo para test."
+    )
 
     args = parser.parse_args()
-    main(args.root_dir, args.dataset)
+    main(args.root_dir, args.dataset, args.sensitivity)

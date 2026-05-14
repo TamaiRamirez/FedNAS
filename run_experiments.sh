@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)
 set -euo pipefail
 ulimit -c 0
 

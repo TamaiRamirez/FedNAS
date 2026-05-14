@@ -228,11 +228,11 @@ def plot_metric_by_beta(
         .sort_values(["beta", "round"])
     )
 
-    plt.figure(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6), constrained_layout=True)
 
     for beta_value in sorted(grouped["beta"].unique()):
         beta_data = grouped[grouped["beta"] == beta_value].sort_values("round")
-        plt.plot(
+        ax.plot(
             beta_data["round"],
             beta_data["value"],
             marker="o",
@@ -241,23 +241,44 @@ def plot_metric_by_beta(
             label=f"BETA={beta_value:g}",
         )
 
-    plt.title(f"Evolution of {metric_name} by round for different BETA values")
-    plt.xlabel("Ronda")
-    plt.ylabel(metric_name)
-    plt.grid(True, linestyle="--", alpha=0.4)
-    plt.legend()
-    plt.tight_layout()
+    # plt.title(f"Evolution of {metric_name} by round for different BETA values")
+    ax.set_xlabel("Round", fontsize=20)
+    ax.set_ylabel("Value", fontsize=20)
+    ax.tick_params(axis="both", labelsize=18)
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(
+        fontsize=16,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        borderaxespad=0.0,
+        frameon=True,
+    )
 
     output_file = output_dir / f"metric_{sanitize_filename(metric_name)}.png"
-    plt.savefig(output_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
     print(f"[OK] Plot guardado: {output_file}")
 
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
 
 def main() -> None:
 
-    root_dir = Path("/workspace/flwr-enas-nofix/ablation").resolve()
+    parser = argparse.ArgumentParser(
+        description="Genera plots de métricas globales para experimentos de ablación."
+    )
+    parser.add_argument(
+        "root_dir",
+        nargs="?",
+        default=None,
+        help="Directorio raíz de los experimentos de ablación.",
+    )
+    args = parser.parse_args()
+
+    if args.root_dir is not None:
+        root_dir = Path(args.root_dir).expanduser().resolve()
+    else:
+        root_dir = (Path(__file__).resolve().parent / "flwr-enas-nofix" / "ablation").resolve()
 
     if not root_dir.exists() or not root_dir.is_dir():
         print(f"[ERROR] Ruta no válida: {root_dir}")

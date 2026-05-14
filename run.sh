@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)
+
 if [ $# -ne 3 ]; then
     echo "Usage: ./run.sh <gpu_device> <container_name> <image_name>"
     exit 1

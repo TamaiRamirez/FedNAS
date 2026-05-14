@@ -24,21 +24,21 @@ serverapp = "flwr_enas_nofix.server_app:app"
 clientapp = "flwr_enas_nofix.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 40
-num-nodes = 6
-local-epochs = 10
+num-server-rounds = 1
+num-nodes = 1
+local-epochs = 320
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
-non_iid = true
+non_iid = false
 alpha = 0.1
-dataset = "ylecun/mnist"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
-dataset_name = "mnist"      # cifar10, cifar100, mnist, femnist
+dataset = "uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
+dataset_name = "cifar10"      # cifar10, cifar100, mnist, femnist
 num-classes = 10              # 10, 100, 10, 62  
-agg_method = "custom"
-mu = 1.0
+agg_method = "fedavg"
+mu = 0.0
 ablation = false
-beta = 0.5
+beta = 0.0
 
 # [tool.flwr.federations]
 # default = "local-simulation"
@@ -49,3 +49,5 @@ beta = 0.5
 # [tool.flwr.federations.local-deployment]
 # address = "127.0.0.1:9093"
 # insecure = true
+
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)
