@@ -56,7 +56,7 @@ The framework follows a federated client-server workflow:
 Terminal 1:
 ```bash
 # Clone the repository
-git https://github.com/TamaiRamirezUA/FedNAS.git
+git clone https://github.com/TamaiRamirezUA/FedNAS.git
 cd FedNAS
 
 # Build the Docker image
