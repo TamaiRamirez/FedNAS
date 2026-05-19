@@ -238,16 +238,16 @@ def plot_metric_by_beta(
             marker="o",
             linewidth=1.5,
             markersize=4,
-            label=f"BETA={beta_value:g}",
+            label=rf"$\beta={beta_value:g}$",
         )
 
     # plt.title(f"Evolution of {metric_name} by round for different BETA values")
-    ax.set_xlabel("Round", fontsize=20)
-    ax.set_ylabel("Value", fontsize=20)
-    ax.tick_params(axis="both", labelsize=18)
+    ax.set_xlabel("Round", fontsize=24)
+    ax.set_ylabel("Value", fontsize=24)
+    ax.tick_params(axis="both", labelsize=22)
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend(
-        fontsize=16,
+        fontsize=22,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         borderaxespad=0.0,
