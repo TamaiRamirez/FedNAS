@@ -425,6 +425,9 @@ def load_data(partition_id, num_partitions):
         X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
         y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
 
+        # X_train = train_set["img"]
+        # y_train = train_set["label"]
+
         X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 
         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)

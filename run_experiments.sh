@@ -23,11 +23,11 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 # Experiment configurations
 #######################################
-NON_IID_LIST=(false true true true)
-ALPHA_LIST=(0.0 1.0 0.5 0.1)
-AGG_LIST=("custom" "custom" "custom" "custom")
-MU_LIST=(0.0 0.01 0.1 1.0)
-BETA_LIST=(0.5 0.5 0.5 0.5)
+NON_IID_LIST=(false)
+ALPHA_LIST=(0.0)
+AGG_LIST=("fedavg")
+MU_LIST=(0.0)
+BETA_LIST=(0.0)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
@@ -82,6 +82,11 @@ for ((i=0; i<NUM_EXPS; i++)); do
     echo "❌ Experiment $((i+1)) failed"
     continue
   fi
+
+  # if ! flwr run "$BASE_DIR" --federation-config="num-supernodes=6 client-resources-num-cpus=8 client-resources-num-gpus=0.5" --stream 2>&1 | tee "$LOGDIR/server.log"; then
+  #   echo "❌ Experiment $((i+1)) failed"
+  #   continue
+  # fi
 
   echo "✅ Experiment $((i+1)) finished"
   
