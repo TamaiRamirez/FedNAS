@@ -23,11 +23,11 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 # Experiment configurations
 #######################################
-NON_IID_LIST=(false)
-ALPHA_LIST=(0.0)
-AGG_LIST=("fedavg")
-MU_LIST=(0.0)
-BETA_LIST=(0.0)
+NON_IID_LIST=(true)
+ALPHA_LIST=(0.5)
+AGG_LIST=("custom")
+MU_LIST=(0.1)
+BETA_LIST=(0.5)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 

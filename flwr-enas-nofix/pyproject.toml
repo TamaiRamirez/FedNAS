@@ -24,21 +24,21 @@ serverapp = "flwr_enas_nofix.server_app:app"
 clientapp = "flwr_enas_nofix.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
-num-nodes = 2
-local-epochs = 2
+num-server-rounds = 40
+num-nodes = 6
+local-epochs = 10
 batch-size = 128
 verbose = true
 project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
-non_iid = false
-alpha = 0.0
+non_iid = true
+alpha = 0.5
 dataset = "uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
 dataset_name = "cifar10"      # cifar10, cifar100, mnist, femnist
 num-classes = 10              # 10, 100, 10, 62  
-agg_method = "fedavg"
-mu = 0.0
+agg_method = "custom"
+mu = 0.1
 ablation = false
-beta = 0.0
+beta = 0.5
 
 # [tool.flwr.federations]
 # default = "local-simulation"

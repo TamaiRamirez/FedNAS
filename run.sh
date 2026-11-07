@@ -25,6 +25,7 @@ fi
 echo "GPU Device set to: RTX $1"
 
 docker run --rm -it \
+    --gpus ${gpu_device} \
     --init \
     --sig-proxy=true \
     --ipc=host \

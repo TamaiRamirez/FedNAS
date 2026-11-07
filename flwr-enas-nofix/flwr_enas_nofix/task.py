@@ -422,13 +422,75 @@ def load_data(partition_id, num_partitions):
         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
         # >>> TVD END
     
-        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
-        y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+        # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
+        # y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
 
         # X_train = train_set["img"]
         # y_train = train_set["label"]
 
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        # NEW DATA SPLIT 
+
+        X = np.asarray(train_set["img"])
+        y = np.asarray(train_set["label"])
+
+        # Count samples per class
+        classes, counts = np.unique(y, return_counts=True)
+
+        print(f"Client {partition_id} class distribution:")
+        print(dict(zip(classes.tolist(), counts.tolist())))
+
+        # Identify classes that contain only one sample
+        rare_classes = classes[counts < 2]
+
+        # Keep rare-class samples exclusively in training
+        rare_mask = np.isin(y, rare_classes)
+
+        X_rare = X[rare_mask]
+        y_rare = y[rare_mask]
+
+        # Samples eligible for stratified splitting
+        X_common = X[~rare_mask]
+        y_common = y[~rare_mask]
+
+        # Stratified split of classes having at least two samples
+        common_classes = np.unique(y_common)
+        n_valid = int(np.ceil(0.2 * len(y_common)))
+        n_train = len(y_common) - n_valid
+
+        if (
+            len(common_classes) > 0
+            and n_valid >= len(common_classes)
+            and n_train >= len(common_classes)
+        ):
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X_common,
+                y_common,
+                test_size=0.2,
+                random_state=42,
+                stratify=y_common
+            )
+        else:
+            # Fallback if stratification is impossible
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X,
+                y,
+                test_size=0.2,
+                random_state=42,
+                stratify=None
+            )
+            X_rare = X[:0]
+            y_rare = y[:0]
+
+        # Add rare-class samples to training
+        if len(y_rare) > 0:
+            X_train = np.concatenate((X_train, X_rare), axis=0)
+            y_train = np.concatenate((y_train, y_rare), axis=0)
+
+        # Duplicate after splitting
+        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
 
         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
@@ -488,10 +550,72 @@ def load_data(partition_id, num_partitions):
         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
         # >>> TVD END
 
-        X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
-        y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
+        # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
+        # y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
         
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        # NEW DATA SPLIT 
+
+        X = np.asarray(train_set["img"])
+        y = np.asarray(train_set["label"])
+
+        # Count samples per class
+        classes, counts = np.unique(y, return_counts=True)
+
+        print(f"Client {partition_id} class distribution:")
+        print(dict(zip(classes.tolist(), counts.tolist())))
+
+        # Identify classes that contain only one sample
+        rare_classes = classes[counts < 2]
+
+        # Keep rare-class samples exclusively in training
+        rare_mask = np.isin(y, rare_classes)
+
+        X_rare = X[rare_mask]
+        y_rare = y[rare_mask]
+
+        # Samples eligible for stratified splitting
+        X_common = X[~rare_mask]
+        y_common = y[~rare_mask]
+
+        # Stratified split of classes having at least two samples
+        common_classes = np.unique(y_common)
+        n_valid = int(np.ceil(0.2 * len(y_common)))
+        n_train = len(y_common) - n_valid
+
+        if (
+            len(common_classes) > 0
+            and n_valid >= len(common_classes)
+            and n_train >= len(common_classes)
+        ):
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X_common,
+                y_common,
+                test_size=0.2,
+                random_state=42,
+                stratify=y_common
+            )
+        else:
+            # Fallback if stratification is impossible
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X,
+                y,
+                test_size=0.2,
+                random_state=42,
+                stratify=None
+            )
+            X_rare = X[:0]
+            y_rare = y[:0]
+
+        # Add rare-class samples to training
+        if len(y_rare) > 0:
+            X_train = np.concatenate((X_train, X_rare), axis=0)
+            y_train = np.concatenate((y_train, y_rare), axis=0)
+
+        # Duplicate after splitting
+        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
 
         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
@@ -550,11 +674,73 @@ def load_data(partition_id, num_partitions):
         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
         # >>> TVD END
 
-        X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
-        X_train = _to_32x32x3(X_train)
-        y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
+        # X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
+        # X_train = _to_32x32x3(X_train)
+        # y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
         
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+        # NEW DATA SPLIT 
+
+        X = np.asarray(train_set["img"])
+        y = np.asarray(train_set["label"])
+
+        # Count samples per class
+        classes, counts = np.unique(y, return_counts=True)
+
+        print(f"Client {partition_id} class distribution:")
+        print(dict(zip(classes.tolist(), counts.tolist())))
+
+        # Identify classes that contain only one sample
+        rare_classes = classes[counts < 2]
+
+        # Keep rare-class samples exclusively in training
+        rare_mask = np.isin(y, rare_classes)
+
+        X_rare = X[rare_mask]
+        y_rare = y[rare_mask]
+
+        # Samples eligible for stratified splitting
+        X_common = X[~rare_mask]
+        y_common = y[~rare_mask]
+
+        # Stratified split of classes having at least two samples
+        common_classes = np.unique(y_common)
+        n_valid = int(np.ceil(0.2 * len(y_common)))
+        n_train = len(y_common) - n_valid
+
+        if (
+            len(common_classes) > 0
+            and n_valid >= len(common_classes)
+            and n_train >= len(common_classes)
+        ):
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X_common,
+                y_common,
+                test_size=0.2,
+                random_state=42,
+                stratify=y_common
+            )
+        else:
+            # Fallback if stratification is impossible
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                X,
+                y,
+                test_size=0.2,
+                random_state=42,
+                stratify=None
+            )
+            X_rare = X[:0]
+            y_rare = y[:0]
+
+        # Add rare-class samples to training
+        if len(y_rare) > 0:
+            X_train = np.concatenate((X_train, X_rare), axis=0)
+            y_train = np.concatenate((y_train, y_rare), axis=0)
+
+        # Duplicate after splitting
+        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
 
         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
