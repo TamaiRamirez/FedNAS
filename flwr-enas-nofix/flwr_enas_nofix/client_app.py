@@ -101,7 +101,8 @@ class FlowerClient(NumPyClient):
             "test_loss": result["child_test_loss"],
             "test_f1_score": result["child_test_f1_score"],
             "communication_cost": 2 * len(result["child_trainable_variables"]) * 4 / (1024 * 1024),
-            "size_model": len(result["child_trainable_variables"]) * 4 / (1024 * 1024)
+            "size_model": len(result["child_trainable_variables"]) * 4 / (1024 * 1024),
+            "architecture": result["final_arc"]
         }
         
         path = api.get_results_dir() / f"client_{self.partition_id}.parquet"

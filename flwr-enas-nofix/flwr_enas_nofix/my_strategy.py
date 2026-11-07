@@ -48,12 +48,11 @@ class CustomFedProxPerformace(FedProx):
         self.results_to_save = {}
         self.start_time = time.time()
         self.num_rounds = num_rounds
-        self.variation_metric = []  # Lista para almacenar la variación de la métrica entre rondas
+        # self.variation_metric = []  # Lista para almacenar la variación de la métrica entre rondas
         self.weights_entropy = []
         self.effective_num_clients = None  # número efectivo de clientes en cada ronda
 
-        # To Change
-        self.prev_f1_by_client: dict[str, float] = {}  # Historial de F1 scores para cada cliente en cada ronda
+        self.hist_f1_by_client: dict[str, list[float]] = {}  # Historial de F1 scores para cada cliente en cada ronda
 
         self.last_parameters_aggregated = initial_parameters
         self.last_loss_total = 0.0
@@ -69,15 +68,17 @@ class CustomFedProxPerformace(FedProx):
         """Compute performance weighted average."""
 
         round_variations = []
-        current_f1_by_client = {}
 
         for client_id, _, _, f1_score in results:
-            prev_f1 = self.prev_f1_by_client.get(client_id, 0.0)
+            # Conserva el último F1 de cada cliente, incluso si no participa en rondas consecutivas.
+            historial = self.hist_f1_by_client.setdefault(client_id, [])
+            prev_f1 = historial[-1] if historial else 0.0
             round_variations.append(f1_score - prev_f1)
-            current_f1_by_client[client_id] = f1_score
 
-        self.prev_f1_by_client = current_f1_by_client
-        self.variation_metric.append(round_variations)
+            # Actualiza directamente la lista del cliente en el diccionario, ya que historial es una referencia a ella.
+            historial.append(f1_score)
+
+        # self.variation_metric.append(round_variations)
 
         weighted_results = []
         mean_var = np.mean(round_variations)

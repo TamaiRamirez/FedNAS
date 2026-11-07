@@ -1179,7 +1179,22 @@ class Trainer:
                 print("FINAL EVALUATION: ")
                 child_valid_acc, child_valid_loss, child_valid_f1_score = self.ops["eval_func"]("valid", self.ops['child']['validation_model'], verbose=True)
                 child_test_acc, child_test_loss, child_test_f1_score = self.ops["eval_func"]("test", self.ops['child']['test_model'], verbose=True)
-                
+                num_archs = 10
+                print(f"Here are FINAL {num_archs} architectures")
+                best_arc = None
+                best_acc = -1
+                for num in range(num_archs):
+                    arc = self.ops["controller"]["generate_sample_arc"]()
+                    print(f"ARC {num}")
+                    print(arc)
+                    images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
+                    child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
+                    acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
+                    print(f"val_acc={acc:<6.4f}")
+                    if acc >= best_acc:
+                        best_acc = acc
+                        best_arc = arc
+                    print("+" * 20)
                 break
         
         print("-" * 80)
@@ -1195,5 +1210,6 @@ class Trainer:
                 "child_test_f1_score": float(child_test_f1_score),
                 "child_weights": self.ops["child"]["weights"],
                 "child_trainable_variables": self.ops['child']['trainable_variables'],
-                "controller_trainable_variables": self.ops["controller"]["trainable_variables"]
+                "controller_trainable_variables": self.ops["controller"]["trainable_variables"],
+                "final_arc": best_arc
                 }
