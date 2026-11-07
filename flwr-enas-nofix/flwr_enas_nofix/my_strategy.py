@@ -51,6 +51,8 @@ class CustomFedProxPerformace(FedProx):
         self.variation_metric = []  # Lista para almacenar la variación de la métrica entre rondas
         self.weights_entropy = []
         self.effective_num_clients = None  # número efectivo de clientes en cada ronda
+
+        # To Change
         self.prev_f1_by_client: dict[str, float] = {}  # Historial de F1 scores para cada cliente en cada ronda
 
         self.last_parameters_aggregated = initial_parameters
