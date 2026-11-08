@@ -1186,15 +1186,20 @@ class Trainer:
                 for num in range(num_archs):
                     arc = self.ops["controller"]["generate_sample_arc"]()
                     print(f"ARC {num}")
-                    print(arc)
+                    print(arc.numpy())
                     images_batch, labels_batch = next(self.ops['child']['dataset_valid_shuffle'].as_numpy_iterator())
                     child_valid_rl_logits = self.ops['child']['validation_rl_model'](images_batch)
                     acc = self.ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
                     print(f"val_acc={acc:<6.4f}")
                     if acc >= best_acc:
                         best_acc = acc
-                        best_arc = arc
+                        best_arc = arc.numpy()
                     print("+" * 20)
+                print("+" * 20)
+                print("BEST ARC")
+                print(best_arc)
+                print(f"val_acc={best_acc:<6.4f}")
+                print("+" * 20)
                 break
         
         print("-" * 80)
