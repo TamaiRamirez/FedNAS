@@ -68,6 +68,8 @@ NUM_CLASSES = toml_config["tool"]["flwr"]["app"]["config"]["num-classes"]
 BETA = toml_config["tool"]["flwr"]["app"]["config"]["beta"]
 ABLATION = toml_config["tool"]["flwr"]["app"]["config"]["ablation"]
 
+Q_PARAM = toml_config["tool"]["flwr"]["app"]["config"]["q_param"]
+
 api = abla_api if ABLATION else exp_api
 
 EARLY_STOPPING = False
@@ -900,7 +902,7 @@ class Trainer:
 
         # Initialize child model
 
-        if AGG_METHOD == "fedavg":
+        if AGG_METHOD in ("fedavg", "qfedavg"):
 
             child_model = ChildClass(
                 self.dataset["images"],
@@ -1010,6 +1012,7 @@ class Trainer:
             child_train_logits, child_loss, child_train_loss, child_train_acc = self.ops['child']['generate_train_losses'](images, labels)
             child_grad_norm, child_grad_norm_list, _ = self.ops['child']['train_op'](child_loss, self.ops['child']['trainable_variables'], tape)
         return child_train_logits, child_loss, child_train_acc, child_grad_norm
+
     
     @fw.function(autograph=False)
     def controller_train_op(self, child_train_logits, labels):
@@ -1049,8 +1052,83 @@ class Trainer:
         #     print(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
         #     print("*" * 80)
         
+        
         self.get_ops()
+
+        train_loss_before = None
+
+        # IMPLEMENTACION PARA Q-FedAvg
+        if (
+            AGG_METHOD == "qfedavg"
+            and self.actual_round > 1
+            and self.learning_rate > 0.0
+        ):
+            # Seleccionar una arquitectura para evaluar
+            # el supernet con los pesos globales recibidos.
+            if self.ops["controller"] is not None:
+                self.ops["controller"]["generate_sample_arc"]()
+
+            X_train = self.dataset["images"]["train"]
+            y_train = self.dataset["labels"]["train"]
+
+            total_loss = 0.0
+            total_samples = 0
+            batch_size = flags.FLAGS.batch_size
+
+            # Evaluación sin augmentation y sin optimizador
+            for start in range(0, len(y_train), batch_size):
+                end = start + batch_size
+
+                images = fw.convert_to_tensor(
+                    X_train[start:end], dtype=fw.float32
+                )
+                labels = fw.convert_to_tensor(
+                    y_train[start:end], dtype=fw.int32
+                )
+
+                # Adaptar formato al esperado por MacroChild
+                if flags.FLAGS.data_format == "NCHW":
+                    images = fw.transpose(
+                        images, [0, 3, 1, 2]
+                    )
+
+                # valid_model se construye con is_training=False
+                logits = self.ops["child"]["validation_model"](
+                    images
+                )
+
+                # Cross-entropy individual, sin FedProx
+                losses = fw.sparse_softmax_cross_entropy_with_logits(
+                    labels=labels,
+                    logits=logits,
+                )
+
+                total_loss += float(
+                    fw.reduce_sum(losses).numpy()
+                )
+                total_samples += len(labels)
+
+            if total_samples == 0:
+                raise ValueError(
+                    "QFedAvg: entrenamiento local vacío."
+                )
+
+            train_loss_before = total_loss / total_samples
+
+            if not np.isfinite(train_loss_before):
+                raise ValueError(
+                    "QFedAvg: pérdida inicial no finita."
+                )
+
+            print(
+                f"[Client {self.partition_id}] "
+                f"Round {self.actual_round} "
+                f"QFedAvg train_loss_before="
+                f"{train_loss_before:.6f}"
+            )
+
         batch_iterator = None
+
 
         print("-" * 80)
         print("Starting session")
@@ -1207,6 +1285,7 @@ class Trainer:
         print(f"Time Running: {curr_time - start_time}")
         print("-" * 80)
         return {
+                "train_loss_before": train_loss_before, # NECESARIO PARA Q-FEDAVG   
                 "child_valid_acc": float(child_valid_acc),
                 "child_valid_loss": float(child_valid_loss),
                 "child_valid_f1_score": float(child_valid_f1_score),

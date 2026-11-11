@@ -66,10 +66,26 @@ class FlowerClient(NumPyClient):
             controller_weights = load_controller_weights(api.get_controller_weights_dir() / f"client_{self.partition_id}_controller_weights.npz")
             transfer = True
         
-        if ABLATION:
-            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (40 - 1))) # Because in experiments I run for 40 rounds, but in ablation I run for 20 rounds, so I adjust the learning rate schedule accordingly to have a similar decay.
+        # if ABLATION:
+        #     lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (40 - 1))) # Because in experiments I run for 40 rounds, but in ablation I run for 15 rounds, so I adjust the learning rate schedule accordingly to have a similar decay.
+        # else:
+        #     lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
+
+        if AGG_METHOD == "qfedavg":
+            lr = float(config["q_lr"])
+        elif ABLATION:
+            # Because in experiments I run for 40 rounds, but in ablation I run for 15 rounds, so I adjust the learning rate schedule accordingly to have a similar decay.
+            lr = 0.05 * 0.5 * (
+                1 + math.cos(
+                    math.pi * (actual_round - 1) / (40 - 1)
+                )
+            )
         else:
-            lr = 0.05 * 0.5 * (1 + math.cos(math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)))
+            lr = 0.05 * 0.5 * (
+                1 + math.cos(
+                    math.pi * (actual_round - 1) / (NUM_ROUNDS - 1)
+                )
+            )
         
         trainer = Trainer(copy.deepcopy(self.data),{"child_weights": child_weights, "controller_trainable_variables": controller_weights}, transfer, actual_round, self.partition_id, learning_rate=lr)
         result = trainer.train()
@@ -115,7 +131,32 @@ class FlowerClient(NumPyClient):
         df.to_parquet(path, engine="pyarrow", index=False)
         self.last_model_weights = model_weights
         
-        return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
+        # return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
+
+        fit_metrics = {
+            "valid_f1_score": (
+                result["child_valid_f1_score"] / self.data["dis_i"]
+                if AGG_METHOD == "custom"
+                else result["child_valid_f1_score"]
+            )
+        }
+
+
+        if (
+            AGG_METHOD == "qfedavg"
+            and actual_round > 1 # La primera ronda es de inicializacion con FedAvg.
+            and lr > 0
+        ):
+            fit_metrics["train_loss"] = float(
+                result["train_loss_before"]
+            )
+
+        return (
+            model_weights,
+            len(self.data["images"]["train"]),
+            fit_metrics,
+        )
+
         # return {weights, num_examples, (results -> aggregate fit function)}
 
     """This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""

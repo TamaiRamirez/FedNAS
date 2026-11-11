@@ -25,9 +25,10 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 #######################################
 NON_IID_LIST=(true)
 ALPHA_LIST=(0.5)
-AGG_LIST=("custom")
-MU_LIST=(0.1)
-BETA_LIST=(0.5)
+AGG_LIST=("qfedavg")
+MU_LIST=(0.0)
+BETA_LIST=(0.0)
+Q_PARAM_LIST=(0.1)
 
 NUM_EXPS=${#NON_IID_LIST[@]}
 
@@ -46,6 +47,7 @@ update_project_toml() {
     -e "s/^agg_method = .*/agg_method = \"${3}\"/" \
     -e "s/^mu = .*/mu = ${4}/" \
     -e "s/^beta = .*/beta = ${5}/" \
+    -e "s/^q_param = .*/q_param = ${6}/" \
     "$PROJECT_TOML"
 }
 
@@ -63,7 +65,8 @@ for ((i=0; i<NUM_EXPS; i++)); do
     "${ALPHA_LIST[$i]}" \
     "${AGG_LIST[$i]}" \
     "${MU_LIST[$i]}" \
-    "${BETA_LIST[$i]}"
+    "${BETA_LIST[$i]}" \
+    "${Q_PARAM_LIST[$i]}"
 
   #######################################
   # Create experiment

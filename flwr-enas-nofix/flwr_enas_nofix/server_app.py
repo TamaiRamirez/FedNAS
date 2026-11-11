@@ -4,15 +4,35 @@ import gc
 from flwr.common import Context, ndarrays_to_parameters, Metrics
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-from flwr_enas_nofix.my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx
+from flwr_enas_nofix.my_strategy import CustomFedAvg, CustomFedProxPerformace, CustomFedProx, CustomQFedAvg
 from typing import List, Tuple
 
-from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt
+import math
+
+from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt, ABLATION, NUM_ROUNDS, Q_PARAM
 
 import tensorflow as tf
 
+# def fit_config(rnd: int):
+#     return {"round": rnd}
+
+# Modificacion para Q-FedAvg
 def fit_config(rnd: int):
-    return {"round": rnd}
+    config = {"round": rnd}
+
+    if AGG_METHOD == "qfedavg":
+        total_rounds_lr = 40 if ABLATION else NUM_ROUNDS
+
+        lr = 0.05 * 0.5 * (
+            1 + math.cos(
+                math.pi * (rnd - 1) / (total_rounds_lr - 1)
+            )
+        )
+
+        config["q_lr"] = float(lr)
+
+    return config
+
 
 
 def server_fn(context: Context):
@@ -52,6 +72,20 @@ def server_fn(context: Context):
             on_fit_config_fn=fit_config,
             proximal_mu = MU
         )
+    elif AGG_METHOD == "qfedavg":
+
+        strategy = CustomQFedAvg(
+            num_rounds=num_rounds,
+            fraction_fit=1.0,
+            fraction_evaluate=1.0,
+            min_fit_clients=2,
+            min_evaluate_clients=2,
+            min_available_clients=2,
+            on_fit_config_fn=fit_config,
+            q_param=Q_PARAM,
+            qffl_learning_rate=0.05,
+        )
+
     config = ServerConfig(num_rounds=num_rounds)
     return ServerAppComponents(strategy=strategy, config=config)
 

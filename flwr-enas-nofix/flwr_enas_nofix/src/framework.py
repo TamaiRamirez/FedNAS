@@ -172,6 +172,8 @@ print = tf.print
 reduce_sum = tf.reduce_sum
 relu = tf.nn.relu
 
+convert_to_tensor = tf.convert_to_tensor
+
 def reshape(tensor, shape, name=None):
   if name is None:
     name = name_scope().current() + "Reshape"
