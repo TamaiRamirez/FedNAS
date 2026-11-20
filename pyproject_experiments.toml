@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flwr-enas-nofix"
+version = "1.0.0"
+description = ""
+license = "Apache-2.0"
+dependencies = [
+    "flwr[simulation]>=1.26.1",
+    "flwr-datasets[vision]>=0.6.0",
+    "tensorflow[and-cuda]>=2.15.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.flwr.app]
+publisher = "Tamai Ramirez-Gordillo"
+
+[tool.flwr.app.components]
+serverapp = "flwr_enas_nofix.server_app:app"
+clientapp = "flwr_enas_nofix.client_app:app"
+
+[tool.flwr.app.config]
+num-server-rounds = 2
+num-nodes = 6
+local-epochs = 1
+batch-size = 128
+verbose = true
+project-path = "/workspace/flwr-enas-nofix/flwr_enas_nofix"
+non_iid = true
+alpha = 0.5
+dataset = "uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/mnist, flwrlabs/femnist
+dataset_name = "cifar10"      # cifar10, cifar100, mnist, femnist
+num-classes = 10              # 10, 100, 10, 62  
+agg_method = "qfedavg"
+mu = 0.0
+ablation = false
+beta = 0.0
+q_param = 0.1
+description_ablation = ""
+tvd = 1.0
+clip = true
+clip_value = 3
+mode = "local-deployment"
+fraction_fit = 1.0
+fraction_evaluate = 1.0
+
+# [tool.flwr.federations]
+# default = "local-simulation"
+
+# [tool.flwr.federations.local-simulation]
+# options.num-supernodes = 2
+
+# [tool.flwr.federations.local-deployment]
+# address = "127.0.0.1:9093"
+# insecure = true
+
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)

@@ -276,7 +276,7 @@ def combine_experiments_by_metric(experiments: List[Dict], metric: str) -> Dict[
 
     return combined
 
-"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 # =========================
 # PLOTEO

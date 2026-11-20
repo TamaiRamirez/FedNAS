@@ -147,12 +147,12 @@ def update_metadata(metadata_path: Path, removed_rounds: int, stop_round: int) -
     content = metadata_path.read_text(encoding="utf-8")
     original_line, total_time = parse_training_time(content)
 
-    total_seconds_to_subtract = 0
-    for _ in range(removed_rounds):
-        minutes_random = random.uniform(15, 16)
-        total_seconds_to_subtract += int(minutes_random * 60)
+    # total_seconds_to_subtract = 0
+    # for _ in range(removed_rounds):
+    #     minutes_random = random.uniform(15, 16)
+    #     total_seconds_to_subtract += int(minutes_random * 60)
 
-    new_time = total_time - timedelta(seconds=total_seconds_to_subtract)
+    new_time = total_time # - timedelta(seconds=total_seconds_to_subtract)
     if new_time.total_seconds() < 0:
         new_time = timedelta(seconds=0)
 

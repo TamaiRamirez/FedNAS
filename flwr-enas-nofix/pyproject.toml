@@ -40,6 +40,13 @@ mu = 0.0
 ablation = false
 beta = 0.0
 q_param = 0.1
+description_ablation = ""
+tvd = 1.0
+clip = true
+clip_value = 3
+mode = "local-deployment"
+fraction_fit = 1.0
+fraction_evaluate = 1.0
 
 # [tool.flwr.federations]
 # default = "local-simulation"
@@ -51,4 +58,4 @@ q_param = 0.1
 # address = "127.0.0.1:9093"
 # insecure = true
 
-# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)
+# This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)

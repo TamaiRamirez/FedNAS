@@ -107,7 +107,7 @@ def load_model():
         model.compile(loss='sparse_categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
         return model
     
-""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 def augment_image(img, crop_size=32, pad_size=4, flip_prob=0.5):
     """

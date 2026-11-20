@@ -245,7 +245,7 @@ def plot_train_valid_shared_heatmap(
 
     return train_total_examples, valid_total_examples
 
-"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 def compute_tick_step(n_classes: int) -> int:
     """

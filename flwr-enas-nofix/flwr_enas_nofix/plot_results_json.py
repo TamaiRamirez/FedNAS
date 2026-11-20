@@ -6,7 +6,7 @@ import numpy as np
 results_path = "/workspace/flwr-cifar10-enas/flwr_cifar10_enas/results.json"
 output_dir = "/workspace/flwr-cifar10-enas/flwr_cifar10_enas/plots"
 os.makedirs(output_dir, exist_ok=True)
-""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 # Cargar los resultados
 with open(results_path, "r") as f:
     results = json.load(f)

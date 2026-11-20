@@ -105,7 +105,7 @@ def parse_metadata_file(metadata_path: Path) -> Optional[Dict[str, str]]:
 def normalize_dataset_name(name: str) -> str:
     return name.strip().lower()
 
-"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 def parse_scenario(data_partitioning: str) -> Optional[str]:
     value = data_partitioning.strip()

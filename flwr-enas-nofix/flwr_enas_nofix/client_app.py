@@ -133,15 +133,21 @@ class FlowerClient(NumPyClient):
         
         # return model_weights, len(self.data["images"]["train"]), {"valid_f1_score": (result["child_valid_f1_score"]/self.data["dis_i"] if AGG_METHOD == "custom" else result["child_valid_f1_score"])}
 
+        # fit_metrics = {
+        #     "valid_f1_score": (
+        #         result["child_valid_f1_score"] / self.data["dis_i"]
+        #         if AGG_METHOD == "custom"
+        #         else result["child_valid_f1_score"]
+        #     )
+        # }
+
         fit_metrics = {
-            "valid_f1_score": (
-                result["child_valid_f1_score"] / self.data["dis_i"]
-                if AGG_METHOD == "custom"
-                else result["child_valid_f1_score"]
-            )
+            "valid_f1_score": result["child_valid_f1_score"]
         }
 
-
+        if AGG_METHOD == "custom":
+            fit_metrics["dis_i"] = float(self.data["dis_i"])
+            fit_metrics["client_id"]= f"client_{self.partition_id}"
         if (
             AGG_METHOD == "qfedavg"
             and actual_round > 1 # La primera ronda es de inicializacion con FedAvg.
@@ -159,7 +165,7 @@ class FlowerClient(NumPyClient):
 
         # return {weights, num_examples, (results -> aggregate fit function)}
 
-    """This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+    """This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
     
     def evaluate(self, parameters, config):
         client_info = self.client_state.config_records["client_info"]

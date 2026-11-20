@@ -39,7 +39,7 @@ op_colors = {
     'max pool': '#CDB4DB',
     'avg pool': '#D8F3DC'
 }
-""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 # Create the graph
 G = nx.DiGraph()
 

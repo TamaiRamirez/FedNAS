@@ -9,7 +9,7 @@ from typing import List, Tuple
 
 import math
 
-from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt, ABLATION, NUM_ROUNDS, Q_PARAM
+from flwr_enas_nofix.task import PROJECT_PATH, AGG_METHOD, MU, write_experiment_txt, ABLATION, NUM_ROUNDS, Q_PARAM, FRACTION_FIT, FRACTION_EVALUATE
 
 import tensorflow as tf
 
@@ -49,16 +49,16 @@ def server_fn(context: Context):
     if AGG_METHOD == "fedavg":
         strategy = CustomFedAvg(
             num_rounds=num_rounds,
-            fraction_fit=1.0,
-            fraction_evaluate=1.0,
+            fraction_fit=FRACTION_FIT,
+            fraction_evaluate=FRACTION_EVALUATE,
             min_available_clients=2,
             on_fit_config_fn=fit_config
         )
     elif AGG_METHOD == "fedprox":
         strategy = CustomFedProx(
             num_rounds=num_rounds,
-            fraction_fit=1.0,
-            fraction_evaluate=1.0,
+            fraction_fit=FRACTION_FIT,
+            fraction_evaluate=FRACTION_EVALUATE,
             min_available_clients=2,
             on_fit_config_fn=fit_config,
             proximal_mu = MU
@@ -66,8 +66,8 @@ def server_fn(context: Context):
     elif AGG_METHOD == "custom":
         strategy = CustomFedProxPerformace(
             num_rounds=num_rounds,
-            fraction_fit=1.0,
-            fraction_evaluate=1.0,
+            fraction_fit=FRACTION_FIT,
+            fraction_evaluate=FRACTION_EVALUATE,
             min_available_clients=2,
             on_fit_config_fn=fit_config,
             proximal_mu = MU
@@ -76,8 +76,8 @@ def server_fn(context: Context):
 
         strategy = CustomQFedAvg(
             num_rounds=num_rounds,
-            fraction_fit=1.0,
-            fraction_evaluate=1.0,
+            fraction_fit=FRACTION_FIT,
+            fraction_evaluate=FRACTION_EVALUATE,
             min_fit_clients=2,
             min_evaluate_clients=2,
             min_available_clients=2,

@@ -260,7 +260,7 @@ def plot_metric_by_beta(
 
     print(f"[OK] Plot guardado: {output_file}")
 
-"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+"""This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 def main() -> None:
 

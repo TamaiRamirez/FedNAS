@@ -70,6 +70,20 @@ ABLATION = toml_config["tool"]["flwr"]["app"]["config"]["ablation"]
 
 Q_PARAM = toml_config["tool"]["flwr"]["app"]["config"]["q_param"]
 
+DESCRIPTION = toml_config["tool"]["flwr"]["app"]["config"]["description_ablation"]
+
+SEED = toml_config["tool"]["flwr"]["app"]["config"]["description"]
+
+TVD = toml_config["tool"]["flwr"]["app"]["config"]["tvd"]
+CLIP = toml_config["tool"]["flwr"]["app"]["config"]["clip"]
+CLIP_VALUE = toml_config["tool"]["flwr"]["app"]["config"]["clip_value"]
+
+MODE = toml_config["tool"]["flwr"]["app"]["config"]["mode"]
+
+FRACTION_FIT = toml_config["tool"]["flwr"]["app"]["config"]["fraction_fit"]
+
+FRACTION_EVALUATE = toml_config["tool"]["flwr"]["app"]["config"]["fraction_evaluate"]
+
 api = abla_api if ABLATION else exp_api
 
 EARLY_STOPPING = False
@@ -188,8 +202,19 @@ def write_experiment_txt():
             f.write(f"\tMU: {MU}\n")
         if AGG_METHOD == "custom":
             f.write(f"\tBETA: {BETA}\n")
+        if AGG_METHOD == "qfedavg":
+            f.write(f"\tQ_PARAM: {Q_PARAM}\n")
         f.write(f"\tBATCH_SIZE: {BATCH_SIZE}\n")
-        f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n\n")
+        f.write(f"\tLOCAL_EPOCHS: {LOCAL_EPOCHS}\n")
+        f.write(f"\tSEED: {SEED}\n")
+        if ABLATION:
+            f.write(f"\tTVD: {TVD}\n")
+            f.write(f"\tCLIP: {CLIP}\n")
+            f.write(f"\tDESCRIPTION ABLATION: {DESCRIPTION}\n")
+        else:
+            f.write(f"\tMODE: {MODE}\n")
+            f.write(f"\tFRACTION_FIT: {FRACTION_FIT}\n")
+            f.write(f"\tFRACTION_FIT: {FRACTION_EVALUATE}\n")
     
 
 
@@ -272,9 +297,9 @@ def load_controller_weights(filepath):
     # print(f"WEIGHTS \n:{weights}")
 
     return weights
-""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
-""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+""" This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
 
 # Functions for child architectures
@@ -362,7 +387,7 @@ def compute_client_dis(y_local_raw):
     p_global = init_global_label_distribution()
     p_local = get_label_distribution(y_local_raw, num_classes)
     tv_i = total_variation_distance(p_local, p_global)
-    dis_i = 1.0 + tv_i
+    dis_i = 1.0 + TVD * tv_i
     return dis_i, tv_i, p_local, p_global
 
 def load_data(partition_id, num_partitions):
@@ -396,7 +421,7 @@ def load_data(partition_id, num_partitions):
                 # training and evaluation.
                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
                                                 self_balancing=True,
-                                                seed=42,
+                                                seed=SEED,
                                                 shuffle=True)
             else:
                 partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -409,12 +434,12 @@ def load_data(partition_id, num_partitions):
         train_set.set_format("numpy")
 
         # Shuffle train set
-        train_set = train_set.shuffle(seed=42)
+        train_set = train_set.shuffle(seed=SEED)
 
         test_set = fds.load_split(split="test")
         test_set.set_format("numpy")
         # Shuffle test set
-        test_set = test_set.shuffle(seed=42)
+        test_set = test_set.shuffle(seed=SEED)
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
@@ -524,7 +549,7 @@ def load_data(partition_id, num_partitions):
                 # training and evaluation.
                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="fine_label", min_partition_size=1500,
                                                 self_balancing=True,
-                                                seed=42,
+                                                seed=SEED,
                                                 shuffle=True)
             else:
                 partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -537,12 +562,12 @@ def load_data(partition_id, num_partitions):
         train_set.set_format("numpy")
 
         # Shuffle train set
-        train_set = train_set.shuffle(seed=42)
+        train_set = train_set.shuffle(seed=SEED)
 
         test_set = fds.load_split(split="test")
         test_set.set_format("numpy")
         # Shuffle test set
-        test_set = test_set.shuffle(seed=42)
+        test_set = test_set.shuffle(seed=SEED)
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
@@ -648,7 +673,7 @@ def load_data(partition_id, num_partitions):
                 # training and evaluation.
                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
                                                 self_balancing=True,
-                                                seed=42,
+                                                seed=SEED,
                                                 shuffle=True)
             else:
                 partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -661,12 +686,12 @@ def load_data(partition_id, num_partitions):
         train_set.set_format("numpy")
 
         # Shuffle train set
-        train_set = train_set.shuffle(seed=42)
+        train_set = train_set.shuffle(seed=SEED)
 
         test_set = fds.load_split(split="test")
         test_set.set_format("numpy")
         # Shuffle test set
-        test_set = test_set.shuffle(seed=42)
+        test_set = test_set.shuffle(seed=SEED)
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
         print("Number of images Original Dataset TEST:", test_set.shape[0])
@@ -773,7 +798,7 @@ def load_data(partition_id, num_partitions):
                 # training and evaluation.
                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="character", min_partition_size=1500,
                                                 self_balancing=True,
-                                                seed=42,
+                                                seed=SEED,
                                                 shuffle=True)
             else:
                 partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -786,7 +811,7 @@ def load_data(partition_id, num_partitions):
         train_set.set_format("numpy")
 
         # Shuffle train set
-        train_set = train_set.shuffle(seed=42)
+        train_set = train_set.shuffle(seed=SEED)
 
         print("-" * 80)
         print("Number of images Original Dataset TRAIN:", train_set.shape[0])

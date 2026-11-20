@@ -38,7 +38,7 @@ class CustomFedAvg(FedAvg):
     #     if self.start_time is None:
     #         self.start_time = time.time()  # marca el inicio justo antes de la primera ronda
     #     return super().configure_fit(server_round, parameters, client_manager)
-    """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+    """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
     def aggregate_fit(
         self,
         server_round: int,

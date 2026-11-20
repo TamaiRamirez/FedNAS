@@ -22,7 +22,9 @@ from .task import (PROJECT_PATH,
                 early_stopping_best_round,
                 EARLY_STOPPING_START_ROUND,
                 EARLY_STOPPING_PATIENCE,
-                EARLY_STOPPING_MIN_DELTA)
+                EARLY_STOPPING_MIN_DELTA,
+                CLIP,
+                CLIP_VALUE)
 
 import tensorflow as tf  # Asegúrate de importar TensorFlow
 import os
@@ -62,38 +64,81 @@ class CustomFedProxPerformace(FedProx):
 
     def performance_aggregate(
         self,
-        results: list[tuple[str, NDArrays, int, float]],
+        results: list[tuple[str, NDArrays, int, float, float]],
         server_round: int,
     ) -> NDArrays:
         """Compute performance weighted average."""
 
         round_variations = []
+        client_records = [] # Para guardar los componente de FedFPA por cliente
 
-        for client_id, _, _, f1_score in results:
+        for client_id, _, num_examples, f1_score, dis_i in results:
             # Conserva el último F1 de cada cliente, incluso si no participa en rondas consecutivas.
             historial = self.hist_f1_by_client.setdefault(client_id, [])
             prev_f1 = historial[-1] if historial else 0.0
-            round_variations.append(f1_score - prev_f1)
+
+            if not math.isfinite(dis_i) or dis_i <= 0:
+                raise ValueError(f"dis_i no válido para {client_id}: {dis_i}")
+
+            delta_f1 = float(f1_score - prev_f1)
+            variation = float(delta_f1 / dis_i)
+
+            round_variations.append(variation)
 
             # Actualiza directamente la lista del cliente en el diccionario, ya que historial es una referencia a ella.
-            historial.append(f1_score)
+            historial.append(float(f1_score))
+
+            client_records.append({
+                "exp_id": api.get_exp_id(),
+                "round": server_round,
+                "client_id": str(client_id),
+                "f1_score": float(f1_score),
+                "prev_f1": float(prev_f1),
+                "delta_f1": delta_f1,
+                "dis_i": float(dis_i),
+                "TVD_i": float(dis_i) - 1.0, 
+                "variation_f1_dis": variation, # Variacion de f1 reducida por dis
+                "num_examples": int(num_examples),
+            })
 
         # self.variation_metric.append(round_variations)
 
         weighted_results = []
-        mean_var = np.mean(round_variations)
-        std_var = np.std(round_variations)
+        mean_var = float(np.mean(round_variations))
+        std_var = float(np.std(round_variations))
 
-        for idx, (client_id, weights, num_examples, _) in enumerate(results):
-            z_score = np.clip(
-                (round_variations[idx] - mean_var) / (std_var + 1e-8),
-                -3,
-                3,
-            )
+        for idx, (client_id, weights, num_examples, _, _) in enumerate(results):
+            z_score = float(
+                        np.clip(
+                            (round_variations[idx] - mean_var) / (std_var + 1e-8),
+                            -CLIP_VALUE, CLIP_VALUE
+                        ) if CLIP else
+                        (round_variations[idx] - mean_var) / (std_var + 1e-8)
+                    )
             lambda_weight = math.exp(BETA * z_score)
+
+            unnormalized_weight = num_examples * lambda_weight
+
             weighted_results.append((client_id, weights, num_examples, lambda_weight))
 
+            client_records[idx].update({
+                "mean_variation": mean_var,
+                "std_variation": std_var,
+                "z_score": z_score,
+                "beta": float(BETA),
+                "lambda_weight": float(lambda_weight),
+                "unnormalized_weight": float(unnormalized_weight),
+            })
+
         total = sum(num_examples * lambda_weight for _, _, num_examples, lambda_weight in weighted_results)
+
+        if total <= 0 or not math.isfinite(total):
+            raise ValueError(f"Peso total de agregación no válido: {total}")
+        
+        for record in client_records:
+            aggregation_weight = record["unnormalized_weight"] / total
+
+            record["lambda"] = float(aggregation_weight)
 
         self.effective_num_clients = 1.0 / sum(
             (num_examples * lambda_weight / total) ** 2
@@ -117,6 +162,40 @@ class CustomFedProxPerformace(FedProx):
             for layer_updates in zip(*weighted_weights, strict=True)
         ]
 
+
+        metrics_dir = api.get_results_dir() / "fedfpa_components"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+
+
+        for record in client_records:
+
+            client_id = record["client_id"]
+
+            # Nombre de archivo seguro y único para cada cliente
+
+            path = metrics_dir / f"client_{client_id}.parquet"
+
+            df = pd.DataFrame([record])
+
+            if path.exists():
+                df_existing = pd.read_parquet(path)
+                df = pd.concat(
+                    [df_existing, df],
+                    ignore_index=True,
+                )
+
+            # Evitar duplicados si se procesa otra vez una ronda
+            df = df.drop_duplicates(
+                subset=["exp_id", "round"],
+                keep="last",
+            ).sort_values("round")
+
+            df.to_parquet(
+                path,
+                engine="pyarrow",
+                index=False,
+            )
+
         return weights_prime
 
     def aggregate_fit(
@@ -126,7 +205,7 @@ class CustomFedProxPerformace(FedProx):
         failures: list[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
-        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
         # parameters_aggregated, metrics_aggregated = super().aggregate_fit(
         #     server_round, results, failures
         # )
@@ -150,12 +229,13 @@ class CustomFedProxPerformace(FedProx):
         
         weights_results = [
             (
-                client_proxy.cid,
+                str(fit_res.metrics["client_id"]),
                 parameters_to_ndarrays(fit_res.parameters),
                 fit_res.num_examples,
-                float(next(iter(fit_res.metrics.values())))
+                float(fit_res.metrics["valid_f1_score"]), # float(next(iter(fit_res.metrics.values()))) ya no es necesario así
+                float(fit_res.metrics["dis_i"]), # Así también paso el valor de dis = 1.0 + TVD por cliente
             )
-            for client_proxy, fit_res in results
+            for _, fit_res in results
         ]
 
         aggregated_ndarrays = self.performance_aggregate(weights_results, server_round)
@@ -319,7 +399,7 @@ class CustomFedProx(FedProx):
         failures: list[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
-        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
         if read_early_stopping_flag():
             print(f"[Round {server_round}] EARLY_STOPPING =True. Se devuelven los últimos parámetros agregados.")
@@ -479,7 +559,7 @@ class CustomFedAvg(FedAvg):
         failures: list[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
         """Aggregate received model updates and save global model checkpoint."""
-        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+        """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
         if read_early_stopping_flag():
             print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
@@ -640,7 +720,7 @@ class CustomQFedAvg(QFedAvg):
     #     failures: list[tuple[ClientProxy, FitRes] | BaseException],
     # ) -> tuple[Parameters | None, dict[str, bool | bytes | float | int | str]]:
     #     """Aggregate received model updates and save global model checkpoint."""
-    #     """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirezUA)"""
+    #     """ This code has been developed by Tamai Ramírez Gordillo (GitHub: TamaiRamirez)"""
 
     #     if read_early_stopping_flag():
     #         print(f"[Round {server_round}] EARLY_STOPPING=True. Se devuelven los últimos parámetros agregados.")
