@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from collections import defaultdict
 from functools import partial
+import tomli
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -18,9 +19,13 @@ if gpus:
     except RuntimeError as e:
       print(e)
 
-tf.random.set_seed(
-  42
-)
+toml_path = Path("/workspace/flwr-enas-nofix/pyproject.toml")
+with toml_path.open("rb") as f:
+    toml_config = tomli.load(f)
+
+SEED = toml_config["tool"]["flwr"]["app"]["config"]["seed"]
+
+set_seed = tf.random.set_seed
 
 tf.config.optimizer.set_jit(False)  # Disable XLA
 
@@ -64,7 +69,7 @@ class WeightRegistry(object):
 
   def __init__(self):
     self.weight_map = defaultdict(WeightRegistry.factory)
-    self.default_initializer = tf.initializers.HeNormal(seed=42) #tf.initializers.variance_scaling(seed=42)
+    self.default_initializer = tf.initializers.HeNormal(seed=SEED) #tf.initializers.variance_scaling(seed=42)
 
   def create_weight(self, scope, name, shape, initializer=None, trainable=True):
     if initializer is None:

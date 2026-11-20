@@ -7,7 +7,6 @@ ulimit -c 0
 #######################################
 BASE_DIR="/workspace/flwr-enas-nofix"
 PROJECT_TOML="$BASE_DIR/pyproject.toml"
-# NODES_SCRIPT="./flwr_super_nodes_4090.sh"
 
 #######################################
 # Environment
@@ -37,6 +36,7 @@ DEFAULT_DATASET_NAME="cifar10"      # cifar10, cifar100, mnist, femnist
 DEFAULT_NUM_CLASSES=10              # 10, 100, 10, 62
 DEFAULT_AGG="custom"
 DEFAULT_MU=1.0
+DEFAULT_ABLATION=true
 DEFAULT_BETA=0.0
 DEFAULT_Q_PARAM=0.0
 DEFAULT_TVD=1.0
@@ -53,9 +53,9 @@ DEFAULT_FRACTION_EVALUATE=1.0
 # "descripcion|parametro=valor|parametro=valor"
 EXPERIMENTS=(
   # Q ablation
-  "q_ablation|q_param=0.0"
-  "q_ablation|q_param=0.25"
-  "q_ablation|q_param=0.5"
+  "q_ablation|q_param=0.0|agg_method="qfedavg""
+  "q_ablation|q_param=0.25|agg_method="qfedavg""
+  "q_ablation|q_param=0.5|agg_method="qfedavg""
 
   # Multiple parameter ablation
   # "beta_q_combined|beta=0.5|q_param=0.25"
@@ -87,15 +87,16 @@ update_project_toml() {
     -e "s/^num-classes = .*/num-classes = ${9}/" \
     -e "s/^agg_method = .*/agg_method = \"${10}\"/" \
     -e "s/^mu = .*/mu = ${11}/" \
-    -e "s/^beta = .*/beta = ${12}/" \
-    -e "s/^q_param = .*/q_param = ${13}/" \
-    -e "s/^seed = .*/seed = ${14}/" \
-    -e "s/^tvd = .*/tvd = ${15}/" \
-    -e "s/^clip = .*/clip = ${16}/" \
-    -e "s/^clip_value = .*/clip_value = ${17}/" \
-    -e "s/^fraction_fit = .*/fraction_fit = ${18}/" \
-    -e "s/^fraction_evaluate = .*/fraction_evaluate = ${19}/" \
-    -e "s/^description_ablation = .*/description_ablation = \"${20}\"/" \
+    -e "s/^ablation = .*/ablation = ${12}/" \
+    -e "s/^beta = .*/beta = ${13}/" \
+    -e "s/^q_param = .*/q_param = ${14}/" \
+    -e "s/^seed = .*/seed = ${15}/" \
+    -e "s/^tvd = .*/tvd = ${16}/" \
+    -e "s/^clip = .*/clip = ${17}/" \
+    -e "s/^clip_value = .*/clip_value = ${18}/" \
+    -e "s/^fraction_fit = .*/fraction_fit = ${19}/" \
+    -e "s/^fraction_evaluate = .*/fraction_evaluate = ${20}/" \
+    -e "s/^description_ablation = .*/description_ablation = \"${21}\"/" \
     "$PROJECT_TOML" > "$tmp_file"
 
   cat "$tmp_file" > "$PROJECT_TOML"
@@ -120,6 +121,7 @@ load_experiment() {
   NUM_CLASSES="$DEFAULT_NUM_CLASSES"
   AGG="$DEFAULT_AGG"
   MU="$DEFAULT_MU"
+  ABLATION="$DEFAULT_ABLATION"
   BETA="$DEFAULT_BETA"
   Q_PARAM="$DEFAULT_Q_PARAM"
   SEED="$DEFAULT_SEED"
@@ -172,6 +174,7 @@ load_experiment() {
       num-classes) NUM_CLASSES="$value" ;;
       agg_method) AGG="$value" ;;
       mu)         MU="$value" ;;
+      ablation)         ABLATION="$value" ;;
       beta)       BETA="$value" ;;
       q_param)    Q_PARAM="$value" ;;
       seed)    SEED="$value" ;;
@@ -214,6 +217,7 @@ for ((i=0; i<NUM_EXPS; i++)); do
     "$NUM_CLASSES" \
     "$AGG" \
     "$MU" \
+    "$ABLATION" \
     "$BETA" \
     "$Q_PARAM" \
     "$SEED" \

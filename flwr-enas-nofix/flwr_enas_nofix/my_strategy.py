@@ -96,7 +96,7 @@ class CustomFedProxPerformace(FedProx):
                 "prev_f1": float(prev_f1),
                 "delta_f1": delta_f1,
                 "dis_i": float(dis_i),
-                "TVD_i": float(dis_i) - 1.0, 
+                "TVD": float(dis_i) - 1.0, 
                 "variation_f1_dis": variation, # Variacion de f1 reducida por dis
                 "num_examples": int(num_examples),
             })

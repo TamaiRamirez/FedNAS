@@ -72,7 +72,7 @@ Q_PARAM = toml_config["tool"]["flwr"]["app"]["config"]["q_param"]
 
 DESCRIPTION = toml_config["tool"]["flwr"]["app"]["config"]["description_ablation"]
 
-SEED = toml_config["tool"]["flwr"]["app"]["config"]["description"]
+SEED = toml_config["tool"]["flwr"]["app"]["config"]["seed"]
 
 TVD = toml_config["tool"]["flwr"]["app"]["config"]["tvd"]
 CLIP = toml_config["tool"]["flwr"]["app"]["config"]["clip"]
@@ -91,6 +91,7 @@ EARLY_STOPPING_START_ROUND = 27
 EARLY_STOPPING_PATIENCE = 3
 EARLY_STOPPING_MIN_DELTA = 0.0
 
+fw.set_seed(SEED)
 
 def get_early_stopping_info_path():
     return api.get_controller_weights_dir() / "early_stoping_info.json"
@@ -585,7 +586,7 @@ def load_data(partition_id, num_partitions):
         # NEW DATA SPLIT 
 
         X = np.asarray(train_set["img"])
-        y = np.asarray(train_set["label"])
+        y = np.asarray(train_set["fine_label"])
 
         # Count samples per class
         classes, counts = np.unique(y, return_counts=True)
@@ -951,7 +952,8 @@ class Trainer:
                 transfer=self.transfer,
                 mu = MU,
                 learning_rate=self.learning_rate,
-                num_clases=NUM_CLASSES
+                num_clases=NUM_CLASSES,
+                batch_size=BATCH_SIZE
             )
         
         controller_ops = None

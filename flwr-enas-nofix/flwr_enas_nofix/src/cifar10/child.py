@@ -156,6 +156,7 @@ class Child(object):
   def __init__(self,
                images,
                labels,
+               batch_size = 128
                eval_batch_size=100,
                clip_mode=None,
                lr_dec_start=0,
@@ -177,7 +178,7 @@ class Child(object):
     self.cutout_size = FLAGS.child_cutout_size
     self.fixed_arc = FLAGS.child_fixed_arc
     self.out_filters = FLAGS.child_out_filters
-    self.batch_size = FLAGS.batch_size
+    self.batch_size = batch_size
     self.num_classes = num_clases
     self.eval_batch_size = eval_batch_size
     self.clip_mode = ClipMode.new(clip_mode, FLAGS.child_grad_bound)
