@@ -5,6 +5,7 @@ import tensorflow as tf
 from collections import defaultdict
 from functools import partial
 import tomli
+from pathlib import Path
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -25,7 +26,7 @@ with toml_path.open("rb") as f:
 
 SEED = toml_config["tool"]["flwr"]["app"]["config"]["seed"]
 
-set_seed = tf.random.set_seed
+tf.random.set_seed(SEED)
 
 tf.config.optimizer.set_jit(False)  # Disable XLA
 

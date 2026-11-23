@@ -156,14 +156,15 @@ class Child(object):
   def __init__(self,
                images,
                labels,
-               batch_size = 128
+               batch_size = 128,
                eval_batch_size=100,
                clip_mode=None,
                lr_dec_start=0,
                optim_algo=None,
                name="generic_model",
                seed=None,
-               learning_rate=None,num_clases=10
+               learning_rate=None,
+               num_clases=10
               ):
     """
     Args:

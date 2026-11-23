@@ -91,7 +91,6 @@ EARLY_STOPPING_START_ROUND = 27
 EARLY_STOPPING_PATIENCE = 3
 EARLY_STOPPING_MIN_DELTA = 0.0
 
-fw.set_seed(SEED)
 
 def get_early_stopping_info_path():
     return api.get_controller_weights_dir() / "early_stoping_info.json"
@@ -710,7 +709,7 @@ def load_data(partition_id, num_partitions):
 
         # NEW DATA SPLIT 
 
-        X = np.asarray(train_set["img"])
+        X = np.asarray(train_set["image"])
         y = np.asarray(train_set["label"])
 
         # Count samples per class
@@ -939,7 +938,8 @@ class Trainer:
                 transfer=self.transfer,
                 mu = 0.0,
                 learning_rate=self.learning_rate,
-                num_clases=NUM_CLASSES
+                num_clases=NUM_CLASSES,
+                batch_size=BATCH_SIZE
             )
         
         else:
@@ -1100,7 +1100,7 @@ class Trainer:
 
             total_loss = 0.0
             total_samples = 0
-            batch_size = flags.FLAGS.batch_size
+            batch_size = BATCH_SIZE
 
             # Evaluación sin augmentation y sin optimizador
             for start in range(0, len(y_train), batch_size):
@@ -1190,7 +1190,7 @@ class Trainer:
             child_train_logits, child_loss, child_train_acc, child_grad_norm = self.child_train_op(images, labels)
             child_lr = self.ops['child']['lr']()
             global_step = self.ops["child"]["global_step"].value()
-            child_train_accs.append(float(child_train_acc/FLAGS.batch_size))
+            child_train_accs.append(float(child_train_acc/BATCH_SIZE))
             child_train_lss.append(float(child_loss))
             if FLAGS.child_sync_replicas:
                 actual_step = global_step * FLAGS.child_num_aggregate
@@ -1201,7 +1201,7 @@ class Trainer:
 
             if global_step % FLAGS.log_every == 0:
                 log_string = f"epoch={epoch:<6d}\tch_step={global_step:<6d}\tloss={child_loss:.4f}\t"
-                log_string += f"lr={child_lr:.4f}\t|g|={child_grad_norm:.4f}\ttr_acc={(child_train_acc/FLAGS.batch_size):4f}\t"
+                log_string += f"lr={child_lr:.4f}\t|g|={child_grad_norm:.4f}\ttr_acc={(child_train_acc/BATCH_SIZE):4f}\t"
                 # log_string += f"Time: {curr_time - start_time}"
                 print(log_string)
 
