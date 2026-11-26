@@ -881,9 +881,9 @@ class CustomQFedAvg(QFedAvg):
                 )
 
             for i, d in enumerate(diff):
-                sum_delta[i] += loss_pow_q * d
+                sum_delta[i] += fit_res.num_examples * loss_pow_q * d
 
-            sum_h += h
+            sum_h += fit_res.num_examples * h
 
         if not np.isfinite(sum_h) or sum_h <= 0:
             raise ValueError(

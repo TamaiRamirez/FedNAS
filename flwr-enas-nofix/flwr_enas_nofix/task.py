@@ -5,7 +5,7 @@ import os
 # import keras
 # from keras import layers
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner, Partitioner
 import numpy as np
 import shutil
 import sys
@@ -390,500 +390,1221 @@ def compute_client_dis(y_local_raw):
     dis_i = 1.0 + TVD * tv_i
     return dis_i, tv_i, p_local, p_global
 
+# def load_data(partition_id, num_partitions):
+#     # Download and partition dataset
+#     # Only initialize `FederatedDataset` once
+#     global fds
+#     images, labels = {}, {}
+
+#     def _to_32x32x3(x):
+#         x = np.asarray(x)
+#         if x.ndim == 4 and x.shape[-1] == 1:
+#             x = x[..., 0]
+#         if x.ndim != 3:
+#             raise ValueError(f"Expected [N,H,W] or [N,H,W,1], got shape {x.shape}")
+#         if x.shape[1] == 28 and x.shape[2] == 28:
+#             x = np.pad(x, ((0, 0), (2, 2), (2, 2)), mode="constant")
+#         elif x.shape[1] != 32 or x.shape[2] != 32:
+#             raise ValueError(f"Expected spatial size 28x28 or 32x32, got {x.shape[1:3]}")
+#         x = x[..., np.newaxis]
+#         return np.repeat(x, 3, axis=-1)
+
+#     if DATASET_NAME == "cifar10":
+#         if fds is None:
+#             if NON_IID:
+#                 # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+#                 # prevent empty or degenerate client datasets that could cause unstable
+#                 # training dynamics or inconsistent metric aggregation. 
+#                 # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+#                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+#                 # heterogeneity and ensuring each client has enough samples for stable
+#                 # training and evaluation.
+#                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
+#                                                 self_balancing=True,
+#                                                 seed=SEED,
+#                                                 shuffle=True)
+#             else:
+#                 partitioner = IidPartitioner(num_partitions=num_partitions)
+#             fds = FederatedDataset(
+#                 dataset=DATASET,
+#                 partitioners={"train": partitioner},
+#             )
+            
+#         train_set = fds.load_partition(partition_id, "train")
+#         train_set.set_format("numpy")
+
+#         # Shuffle train set
+#         train_set = train_set.shuffle(seed=SEED)
+
+#         test_set = fds.load_split(split="test")
+#         test_set.set_format("numpy")
+#         # Shuffle test set
+#         test_set = test_set.shuffle(seed=SEED)
+#         print("-" * 80)
+#         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+#         print("Number of images Original Dataset TEST:", test_set.shape[0])
+    
+#         # >>> TVD START
+#         y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+#         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+#         # >>> TVD END
+    
+#         # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
+#         # y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
+
+#         # X_train = train_set["img"]
+#         # y_train = train_set["label"]
+
+#         # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+#         # NEW DATA SPLIT 
+
+#         X = np.asarray(train_set["img"])
+#         y = np.asarray(train_set["label"])
+
+#         # Count samples per class
+#         classes, counts = np.unique(y, return_counts=True)
+
+#         print(f"Client {partition_id} class distribution:")
+#         print(dict(zip(classes.tolist(), counts.tolist())))
+
+#         # Identify classes that contain only one sample
+#         rare_classes = classes[counts < 2]
+
+#         # Keep rare-class samples exclusively in training
+#         rare_mask = np.isin(y, rare_classes)
+
+#         X_rare = X[rare_mask]
+#         y_rare = y[rare_mask]
+
+#         # Samples eligible for stratified splitting
+#         X_common = X[~rare_mask]
+#         y_common = y[~rare_mask]
+
+#         # Stratified split of classes having at least two samples
+#         common_classes = np.unique(y_common)
+#         n_valid = int(np.ceil(0.2 * len(y_common)))
+#         n_train = len(y_common) - n_valid
+
+#         if (
+#             len(common_classes) > 0
+#             and n_valid >= len(common_classes)
+#             and n_train >= len(common_classes)
+#         ):
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X_common,
+#                 y_common,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=y_common
+#             )
+#         else:
+#             # Fallback if stratification is impossible
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X,
+#                 y,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=None
+#             )
+#             X_rare = X[:0]
+#             y_rare = y[:0]
+
+#         # Add rare-class samples to training
+#         if len(y_rare) > 0:
+#             X_train = np.concatenate((X_train, X_rare), axis=0)
+#             y_train = np.concatenate((y_train, y_rare), axis=0)
+
+#         # Duplicate after splitting
+#         X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+#         y_train = np.concatenate((y_train, y_train, y_train), axis=0)
+
+#         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+#         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+#         mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+#         std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+#         # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+#         # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+#         images["train"] = np.float32((images["train"] - mean) / std)
+#         images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+#         # print(test_set["img"])
+        
+#         images["test"] = np.float32(test_set["img"]) / 255.0
+#         images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+        
+        
+#     elif DATASET_NAME == "cifar100":
+#         if fds is None:
+#             if NON_IID:
+#                 # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+#                 # prevent empty or degenerate client datasets that could cause unstable
+#                 # training dynamics or inconsistent metric aggregation. 
+#                 # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+#                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+#                 # heterogeneity and ensuring each client has enough samples for stable
+#                 # training and evaluation.
+#                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="fine_label", min_partition_size=1500,
+#                                                 self_balancing=True,
+#                                                 seed=SEED,
+#                                                 shuffle=True)
+#             else:
+#                 partitioner = IidPartitioner(num_partitions=num_partitions)
+#             fds = FederatedDataset(
+#                 dataset=DATASET,
+#                 partitioners={"train": partitioner},
+#             )
+            
+#         train_set = fds.load_partition(partition_id, "train")
+#         train_set.set_format("numpy")
+
+#         # Shuffle train set
+#         train_set = train_set.shuffle(seed=SEED)
+
+#         test_set = fds.load_split(split="test")
+#         test_set.set_format("numpy")
+#         # Shuffle test set
+#         test_set = test_set.shuffle(seed=SEED)
+#         print("-" * 80)
+#         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+#         print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+#         # >>> TVD START
+#         y_local_raw = np.asarray(train_set["fine_label"], dtype=np.int32)
+#         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+#         # >>> TVD END
+
+#         # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
+#         # y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
+        
+#         # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+#         # NEW DATA SPLIT 
+
+#         X = np.asarray(train_set["img"])
+#         y = np.asarray(train_set["fine_label"])
+
+#         # Count samples per class
+#         classes, counts = np.unique(y, return_counts=True)
+
+#         print(f"Client {partition_id} class distribution:")
+#         print(dict(zip(classes.tolist(), counts.tolist())))
+
+#         # Identify classes that contain only one sample
+#         rare_classes = classes[counts < 2]
+
+#         # Keep rare-class samples exclusively in training
+#         rare_mask = np.isin(y, rare_classes)
+
+#         X_rare = X[rare_mask]
+#         y_rare = y[rare_mask]
+
+#         # Samples eligible for stratified splitting
+#         X_common = X[~rare_mask]
+#         y_common = y[~rare_mask]
+
+#         # Stratified split of classes having at least two samples
+#         common_classes = np.unique(y_common)
+#         n_valid = int(np.ceil(0.2 * len(y_common)))
+#         n_train = len(y_common) - n_valid
+
+#         if (
+#             len(common_classes) > 0
+#             and n_valid >= len(common_classes)
+#             and n_train >= len(common_classes)
+#         ):
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X_common,
+#                 y_common,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=y_common
+#             )
+#         else:
+#             # Fallback if stratification is impossible
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X,
+#                 y,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=None
+#             )
+#             X_rare = X[:0]
+#             y_rare = y[:0]
+
+#         # Add rare-class samples to training
+#         if len(y_rare) > 0:
+#             X_train = np.concatenate((X_train, X_rare), axis=0)
+#             y_train = np.concatenate((y_train, y_rare), axis=0)
+
+#         # Duplicate after splitting
+#         X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+#         y_train = np.concatenate((y_train, y_train, y_train), axis=0)
+
+#         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+#         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+#         mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+#         std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+#         # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+#         # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+#         images["train"] = np.float32((images["train"] - mean) / std)
+#         images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+#         # print(test_set["img"])
+        
+#         images["test"] = np.float32(test_set["img"]) / 255.0
+#         images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["fine_label"])
+
+#     elif DATASET_NAME == "mnist":
+#         if fds is None:
+#             if NON_IID:
+#                 # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+#                 # prevent empty or degenerate client datasets that could cause unstable
+#                 # training dynamics or inconsistent metric aggregation. 
+#                 # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+#                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+#                 # heterogeneity and ensuring each client has enough samples for stable
+#                 # training and evaluation.
+#                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
+#                                                 self_balancing=True,
+#                                                 seed=SEED,
+#                                                 shuffle=True)
+#             else:
+#                 partitioner = IidPartitioner(num_partitions=num_partitions)
+#             fds = FederatedDataset(
+#                 dataset=DATASET,
+#                 partitioners={"train": partitioner},
+#             )
+            
+#         train_set = fds.load_partition(partition_id, "train")
+#         train_set.set_format("numpy")
+
+#         # Shuffle train set
+#         train_set = train_set.shuffle(seed=SEED)
+
+#         test_set = fds.load_split(split="test")
+#         test_set.set_format("numpy")
+#         # Shuffle test set
+#         test_set = test_set.shuffle(seed=SEED)
+#         print("-" * 80)
+#         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+#         print("Number of images Original Dataset TEST:", test_set.shape[0])
+
+#         # >>> TVD START
+#         y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
+#         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+#         # >>> TVD END
+
+#         # X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
+#         # X_train = _to_32x32x3(X_train)
+#         # y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
+        
+#         # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
+#         # NEW DATA SPLIT 
+
+#         X = np.asarray(train_set["image"])
+#         y = np.asarray(train_set["label"])
+
+#         # Count samples per class
+#         classes, counts = np.unique(y, return_counts=True)
+
+#         print(f"Client {partition_id} class distribution:")
+#         print(dict(zip(classes.tolist(), counts.tolist())))
+
+#         # Identify classes that contain only one sample
+#         rare_classes = classes[counts < 2]
+
+#         # Keep rare-class samples exclusively in training
+#         rare_mask = np.isin(y, rare_classes)
+
+#         X_rare = X[rare_mask]
+#         y_rare = y[rare_mask]
+
+#         # Samples eligible for stratified splitting
+#         X_common = X[~rare_mask]
+#         y_common = y[~rare_mask]
+
+#         # Stratified split of classes having at least two samples
+#         common_classes = np.unique(y_common)
+#         n_valid = int(np.ceil(0.2 * len(y_common)))
+#         n_train = len(y_common) - n_valid
+
+#         if (
+#             len(common_classes) > 0
+#             and n_valid >= len(common_classes)
+#             and n_train >= len(common_classes)
+#         ):
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X_common,
+#                 y_common,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=y_common
+#             )
+#         else:
+#             # Fallback if stratification is impossible
+#             X_train, X_valid, y_train, y_valid = train_test_split(
+#                 X,
+#                 y,
+#                 test_size=0.2,
+#                 random_state=42,
+#                 stratify=None
+#             )
+#             X_rare = X[:0]
+#             y_rare = y[:0]
+
+#         # Add rare-class samples to training
+#         if len(y_rare) > 0:
+#             X_train = np.concatenate((X_train, X_rare), axis=0)
+#             y_train = np.concatenate((y_train, y_rare), axis=0)
+
+#         # Duplicate after splitting
+#         X_train = np.concatenate((X_train, X_train, X_train), axis=0)
+#         y_train = np.concatenate((y_train, y_train, y_train), axis=0)
+
+#         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+#         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+#         mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+#         std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+#         # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+#         # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+#         images["train"] = np.float32((images["train"] - mean) / std)
+#         images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+#         # print(test_set["img"])
+        
+#         images["test"] = np.float32(_to_32x32x3(test_set["image"])) / 255.0
+#         images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+
+#     elif DATASET_NAME == "femnist":
+#         if fds is None:
+#             if NON_IID:
+#                 # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
+#                 # prevent empty or degenerate client datasets that could cause unstable
+#                 # training dynamics or inconsistent metric aggregation. 
+#                 # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
+#                 # across 6 clients for CIFAR-10, while still preserving strong Non-IID
+#                 # heterogeneity and ensuring each client has enough samples for stable
+#                 # training and evaluation.
+#                 partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="character", min_partition_size=1500,
+#                                                 self_balancing=True,
+#                                                 seed=SEED,
+#                                                 shuffle=True)
+#             else:
+#                 partitioner = IidPartitioner(num_partitions=num_partitions)
+#             fds = FederatedDataset(
+#                 dataset=DATASET,
+#                 partitioners={"train": partitioner},
+#             )
+            
+#         train_set = fds.load_partition(partition_id, "train")
+#         train_set.set_format("numpy")
+
+#         # Shuffle train set
+#         train_set = train_set.shuffle(seed=SEED)
+
+#         print("-" * 80)
+#         print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+
+#         # >>> TVD START
+#         y_local_raw = np.asarray(train_set["character"], dtype=np.int32)
+#         dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
+#         # >>> TVD END
+
+#         X_train = np.array(train_set["image"])
+#         X_train = _to_32x32x3(X_train)
+#         y_train = np.array(train_set['character'])
+        
+#         X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.3, random_state=42, stratify=y_train)
+
+#         X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=1/7, random_state=42, stratify=y_train)
+
+#         images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
+#         images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
+        
+#         mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
+#         std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+
+#         # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
+#         # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+
+#         images["train"] = np.float32((images["train"] - mean) / std)
+#         images["valid"] = np.float32((images["valid"] - mean) / std)
+        
+#         # print(test_set["img"])
+        
+#         images["test"] = X_test / 255.0
+#         images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(y_test)
+
+#     print("Number of images in dataset (Train):", images["train"].shape[0])
+#     print("Number of images in dataset (Valid):", images["valid"].shape[0])
+#     print("Number of images in dataset (Test):", images["test"].shape[0])
+    
+#     rows = []
+
+#     print("-" * 80)
+#     print("Label distribution:")
+
+#     for split in ["train", "valid", "test"]:
+#         label_counts = Counter(labels[split])
+#         print(f"{split.upper()} set class distribution:")
+#         for label in sorted(label_counts):
+#             count = label_counts[label]
+#             print(f"  Class {label}: {count} samples")
+#             rows.append({
+#                 "exp_id": api.get_exp_id(),
+#                 "partition_id": partition_id,
+#                 "dataset_name": DATASET_NAME,
+#                 "split": split,
+#                 "class": int(label),
+#                 "count": int(count),
+#             })
+#         print("-" * 40)
+
+#     print("-" * 80)
+
+#     df = pd.DataFrame(rows)
+
+#     df.to_parquet(
+#         api.get_label_distributions_dir() / f"client_{partition_id}.parquet",
+#         engine="pyarrow",
+#         index=False,
+#     )
+
+#     # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
+    
+#     return {"images": images, "labels": labels, "dis_i": dis_i}
+
+class MinClassDirichletPartitioner(Partitioner):
+    """
+    Dirichlet Non-IID partitioner with:
+      - Minimum samples per class per client.
+      - Minimum total samples per client.
+      - No duplicated samples across clients.
+      - Reproducible partitioning.
+    """
+
+    def __init__(
+        self,
+        num_partitions,
+        alpha,
+        partition_by,
+        min_per_class=10,
+        min_partition_size=1500,
+        seed=42,
+    ):
+        super().__init__()
+
+        if num_partitions < 1:
+            raise ValueError("num_partitions must be >= 1")
+
+        if alpha <= 0:
+            raise ValueError("alpha must be > 0")
+
+        if min_per_class < 1:
+            raise ValueError("min_per_class must be >= 1")
+
+        if min_partition_size < 1:
+            raise ValueError("min_partition_size must be >= 1")
+
+        self._num_partitions = num_partitions
+        self.alpha = alpha
+        self.partition_by = partition_by
+        self.min_per_class = min_per_class
+        self.min_partition_size = min_partition_size
+        self.seed = seed
+
+        self._indices = None
+
+    @property
+    def num_partitions(self):
+        return self._num_partitions
+
+    def load_partition(self, partition_id):
+
+        if not 0 <= partition_id < self.num_partitions:
+            raise ValueError(f"Invalid partition_id: {partition_id}")
+
+        if self._indices is None:
+            self._create_partitions()
+
+        return self.dataset.select(
+            self._indices[partition_id]
+        )
+
+    def _create_partitions(self):
+
+        rng = np.random.default_rng(self.seed)
+
+        y = np.asarray(
+            self.dataset[self.partition_by]
+        )
+
+        classes, counts = np.unique(
+            y, return_counts=True
+        )
+
+        n = self.num_partitions
+        m = self.min_per_class
+
+        # Check class-level feasibility
+        for cls, count in zip(classes, counts):
+            required = n * m
+
+            if count < required:
+                raise ValueError(
+                    f"Class {cls}: {count} available samples, "
+                    f"but {required} required "
+                    f"({n} clients x {m} samples)."
+                )
+
+        # Check total partition-size feasibility
+        if len(y) < n * self.min_partition_size:
+            raise ValueError(
+                f"Dataset contains {len(y)} samples, "
+                f"but {n * self.min_partition_size} "
+                f"are required."
+            )
+
+        # Each client stores indices grouped by class
+        buckets = [
+            {int(cls): [] for cls in classes}
+            for _ in range(n)
+        ]
+
+        # STEP 1: Reserve minimum samples per class
+        # STEP 2: Distribute remaining samples via Dirichlet
+
+        for cls in classes:
+
+            cls = int(cls)
+
+            indices = np.flatnonzero(y == cls)
+            rng.shuffle(indices)
+
+            # Guaranteed class minimum
+            for client_id in range(n):
+
+                start = client_id * m
+                end = start + m
+
+                buckets[client_id][cls].extend(
+                    indices[start:end].tolist()
+                )
+
+            # Remaining samples
+            remaining = indices[n * m:]
+
+            # Dirichlet distribution
+            proportions = rng.dirichlet(
+                np.full(n, self.alpha)
+            )
+
+            allocation = rng.multinomial(
+                len(remaining),
+                proportions
+            )
+
+            splits = np.split(
+                remaining,
+                np.cumsum(allocation)[:-1]
+            )
+
+            for client_id, split in enumerate(splits):
+                buckets[client_id][cls].extend(
+                    split.tolist()
+                )
+
+        # STEP 3: Enforce minimum total partition size
+
+        sizes = np.array(
+            [
+                sum(len(v) for v in bucket.values())
+                for bucket in buckets
+            ],
+            dtype=np.int64,
+        )
+
+        for receiver in range(n):
+
+            while sizes[receiver] < self.min_partition_size:
+
+                # Select the largest donor
+                donor = int(np.argmax(sizes))
+
+                if sizes[donor] <= self.min_partition_size:
+                    raise RuntimeError(
+                        "Unable to satisfy minimum partition size."
+                    )
+
+                # Select a class with transferable samples
+                cls = max(
+                    buckets[donor],
+                    key=lambda c: len(buckets[donor][c]) - m,
+                )
+
+                available = len(buckets[donor][cls]) - m
+
+                if available <= 0:
+                    raise RuntimeError(
+                        "No transferable samples available."
+                    )
+
+                amount = min(
+                    self.min_partition_size - sizes[receiver],
+                    sizes[donor] - self.min_partition_size,
+                    available,
+                )
+
+                moved = buckets[donor][cls][-amount:]
+
+                del buckets[donor][cls][-amount:]
+
+                buckets[receiver][cls].extend(moved)
+
+                sizes[donor] -= amount
+                sizes[receiver] += amount
+
+        # STEP 4: Flatten and shuffle client indices
+
+        self._indices = []
+
+        for bucket in buckets:
+
+            indices = np.asarray(
+                [
+                    idx
+                    for class_indices in bucket.values()
+                    for idx in class_indices
+                ],
+                dtype=np.int64,
+            )
+
+            rng.shuffle(indices)
+
+            self._indices.append(indices.tolist())
+
+# Minimum samples per class and client
+MIN_SAMPLES_PER_CLASS = {
+    "cifar10": 50,
+    "cifar100": 10,
+    "mnist": 50,
+    "femnist": 10,
+}
+
+MIN_PARTITION_SIZE = 1500
+
+# Initialize once
+fds = None
+
+
 def load_data(partition_id, num_partitions):
-    # Download and partition dataset
-    # Only initialize `FederatedDataset` once
+
     global fds
-    images, labels = {}, {}
+
+    images = {}
+    labels = {}
+
+    # --------------------------------------------------
+    # Dataset configuration
+    # --------------------------------------------------
+
+    dataset_config = {
+        "cifar10": {
+            "image_col": "img",
+            "label_col": "label",
+            "grayscale": False,
+            "local_test": False,
+        },
+        "cifar100": {
+            "image_col": "img",
+            "label_col": "fine_label",
+            "grayscale": False,
+            "local_test": False,
+        },
+        "mnist": {
+            "image_col": "image",
+            "label_col": "label",
+            "grayscale": True,
+            "local_test": False,
+        },
+        "femnist": {
+            "image_col": "image",
+            "label_col": "character",
+            "grayscale": True,
+            "local_test": True,
+        },
+    }
+
+    if DATASET_NAME not in dataset_config:
+        raise ValueError(
+            f"Unsupported dataset: {DATASET_NAME}"
+        )
+
+    config = dataset_config[DATASET_NAME]
+
+    image_col = config["image_col"]
+    label_col = config["label_col"]
+
+    min_per_class = MIN_SAMPLES_PER_CLASS[
+        DATASET_NAME
+    ]
+
+    # --------------------------------------------------
+    # Convert grayscale images to 32x32x3
+    # --------------------------------------------------
 
     def _to_32x32x3(x):
+
         x = np.asarray(x)
+
         if x.ndim == 4 and x.shape[-1] == 1:
             x = x[..., 0]
+
         if x.ndim != 3:
-            raise ValueError(f"Expected [N,H,W] or [N,H,W,1], got shape {x.shape}")
-        if x.shape[1] == 28 and x.shape[2] == 28:
-            x = np.pad(x, ((0, 0), (2, 2), (2, 2)), mode="constant")
-        elif x.shape[1] != 32 or x.shape[2] != 32:
-            raise ValueError(f"Expected spatial size 28x28 or 32x32, got {x.shape[1:3]}")
+            raise ValueError(
+                f"Expected [N,H,W] or [N,H,W,1], "
+                f"got {x.shape}"
+            )
+
+        if x.shape[1:3] == (28, 28):
+
+            x = np.pad(
+                x,
+                ((0, 0), (2, 2), (2, 2)),
+                mode="constant",
+            )
+
+        elif x.shape[1:3] != (32, 32):
+
+            raise ValueError(
+                f"Invalid image shape: {x.shape}"
+            )
+
         x = x[..., np.newaxis]
+
         return np.repeat(x, 3, axis=-1)
 
-    if DATASET_NAME == "cifar10":
-        if fds is None:
-            if NON_IID:
-                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-                # prevent empty or degenerate client datasets that could cause unstable
-                # training dynamics or inconsistent metric aggregation. 
-                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
-                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
-                # heterogeneity and ensuring each client has enough samples for stable
-                # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
-                                                self_balancing=True,
-                                                seed=SEED,
-                                                shuffle=True)
-            else:
-                partitioner = IidPartitioner(num_partitions=num_partitions)
-            fds = FederatedDataset(
-                dataset=DATASET,
-                partitioners={"train": partitioner},
+    # --------------------------------------------------
+    # Safe stratified split
+    # --------------------------------------------------
+
+    def _safe_split(X, y, test_size, seed):
+
+        if len(y) < 2:
+            raise ValueError(
+                "At least two samples are required "
+                "to create a split."
             )
-            
-        train_set = fds.load_partition(partition_id, "train")
-        train_set.set_format("numpy")
 
-        # Shuffle train set
-        train_set = train_set.shuffle(seed=SEED)
+        classes, counts = np.unique(
+            y, return_counts=True
+        )
 
-        test_set = fds.load_split(split="test")
-        test_set.set_format("numpy")
-        # Shuffle test set
-        test_set = test_set.shuffle(seed=SEED)
-        print("-" * 80)
-        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-        print("Number of images Original Dataset TEST:", test_set.shape[0])
-    
-        # >>> TVD START
-        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
-        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
-        # >>> TVD END
-    
-        # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0) 
-        # y_train = np.concatenate((train_set["label"], train_set["label"], train_set["label"]), axis=0)
-
-        # X_train = train_set["img"]
-        # y_train = train_set["label"]
-
-        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
-
-        # NEW DATA SPLIT 
-
-        X = np.asarray(train_set["img"])
-        y = np.asarray(train_set["label"])
-
-        # Count samples per class
-        classes, counts = np.unique(y, return_counts=True)
-
-        print(f"Client {partition_id} class distribution:")
-        print(dict(zip(classes.tolist(), counts.tolist())))
-
-        # Identify classes that contain only one sample
+        # Rare classes remain in training
         rare_classes = classes[counts < 2]
 
-        # Keep rare-class samples exclusively in training
         rare_mask = np.isin(y, rare_classes)
 
-        X_rare = X[rare_mask]
-        y_rare = y[rare_mask]
+        rare_indices = np.flatnonzero(rare_mask)
+        common_indices = np.flatnonzero(~rare_mask)
 
-        # Samples eligible for stratified splitting
-        X_common = X[~rare_mask]
-        y_common = y[~rare_mask]
+        common_classes = np.unique(
+            y[common_indices]
+        )
 
-        # Stratified split of classes having at least two samples
-        common_classes = np.unique(y_common)
-        n_valid = int(np.ceil(0.2 * len(y_common)))
-        n_train = len(y_common) - n_valid
+        n_valid = int(
+            np.ceil(test_size * len(common_indices))
+        )
 
-        if (
+        n_train = len(common_indices) - n_valid
+
+        can_stratify = (
             len(common_classes) > 0
             and n_valid >= len(common_classes)
             and n_train >= len(common_classes)
-        ):
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X_common,
-                y_common,
-                test_size=0.2,
-                random_state=42,
-                stratify=y_common
+        )
+
+        if can_stratify:
+
+            train_idx, valid_idx = train_test_split(
+                common_indices,
+                test_size=test_size,
+                random_state=seed,
+                stratify=y[common_indices],
             )
+
+            # Rare classes only in training
+            train_idx = np.concatenate(
+                [train_idx, rare_indices]
+            )
+
         else:
-            # Fallback if stratification is impossible
-            X_train, X_valid, y_train, y_valid = train_test_split(
+
+            # Fallback for very small IID partitions
+            train_idx, valid_idx = train_test_split(
+                np.arange(len(y)),
+                test_size=test_size,
+                random_state=seed,
+                stratify=None,
+            )
+
+        return (
+            X[train_idx],
+            X[valid_idx],
+            y[train_idx],
+            y[valid_idx],
+        )
+
+    # --------------------------------------------------
+    # Initialize FederatedDataset
+    # --------------------------------------------------
+
+    if fds is None:
+
+        if NON_IID:
+
+            partitioner = MinClassDirichletPartitioner(
+                num_partitions=num_partitions,
+                alpha=ALPHA,
+                partition_by=label_col,
+                min_per_class=min_per_class,
+                min_partition_size=MIN_PARTITION_SIZE,
+                seed=SEED,
+            )
+
+        else:
+
+            partitioner = IidPartitioner(
+                num_partitions=num_partitions
+            )
+
+        fds = FederatedDataset(
+            dataset=DATASET,
+            partitioners={"train": partitioner},
+        )
+
+    # --------------------------------------------------
+    # Load client partition
+    # --------------------------------------------------
+
+    train_set = fds.load_partition(
+        partition_id,
+        "train",
+    )
+
+    train_set = train_set.shuffle(seed=SEED)
+    train_set.set_format("numpy")
+
+    print("-" * 80)
+
+    print(
+        "Number of images Original Dataset TRAIN:",
+        len(train_set),
+    )
+
+    # --------------------------------------------------
+    # Compute original client distribution
+    # --------------------------------------------------
+
+    y_local_raw = np.asarray(
+        train_set[label_col],
+        dtype=np.int32,
+    )
+
+    dis_i, tv_i, p_local, p_global = (
+        compute_client_dis(y_local_raw)
+    )
+
+    # --------------------------------------------------
+    # Extract client data
+    # --------------------------------------------------
+
+    X = np.asarray(train_set[image_col])
+
+    y = np.asarray(
+        train_set[label_col],
+        dtype=np.int32,
+    )
+
+    # --------------------------------------------------
+    # Check class distribution
+    # --------------------------------------------------
+
+    classes, counts = np.unique(
+        y, return_counts=True
+    )
+
+    distribution = dict(
+        zip(classes.tolist(), counts.tolist())
+    )
+
+    print(
+        f"Client {partition_id} class distribution:"
+    )
+
+    print(distribution)
+
+    if NON_IID:
+
+        if np.any(counts < min_per_class):
+            raise RuntimeError(
+                f"Client {partition_id} does not "
+                f"satisfy min_per_class={min_per_class}"
+            )
+
+        if len(y) < MIN_PARTITION_SIZE:
+            raise RuntimeError(
+                f"Client {partition_id} does not "
+                "satisfy min_partition_size."
+            )
+
+    # --------------------------------------------------
+    # Convert grayscale datasets before splitting
+    # --------------------------------------------------
+
+    if config["grayscale"]:
+        X = _to_32x32x3(X)
+
+    # --------------------------------------------------
+    # Split train / validation / test
+    # --------------------------------------------------
+
+    if config["local_test"]:
+
+        # FEMNIST:
+        # 60% training
+        # 10% validation
+        # 30% testing
+
+        X_train, X_test, y_train, y_test = (
+            _safe_split(
+                X,
+                y,
+                test_size=0.3,
+                seed=42,
+            )
+        )
+
+        X_train, X_valid, y_train, y_valid = (
+            _safe_split(
+                X_train,
+                y_train,
+                test_size=1 / 7,
+                seed=42,
+            )
+        )
+
+    else:
+
+        # CIFAR-10, CIFAR-100 and MNIST:
+        # 80% local training
+        # 20% local validation
+        # Global test split
+
+        X_train, X_valid, y_train, y_valid = (
+            _safe_split(
                 X,
                 y,
                 test_size=0.2,
-                random_state=42,
-                stratify=None
+                seed=42,
             )
-            X_rare = X[:0]
-            y_rare = y[:0]
+        )
 
-        # Add rare-class samples to training
-        if len(y_rare) > 0:
-            X_train = np.concatenate((X_train, X_rare), axis=0)
-            y_train = np.concatenate((y_train, y_rare), axis=0)
+        test_set = fds.load_split(
+            split="test"
+        )
 
-        # Duplicate after splitting
-        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
-        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
-
-        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-        
-        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
-
-        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
-
-        images["train"] = np.float32((images["train"] - mean) / std)
-        images["valid"] = np.float32((images["valid"] - mean) / std)
-        
-        # print(test_set["img"])
-        
-        images["test"] = np.float32(test_set["img"]) / 255.0
-        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
-        
-        
-    elif DATASET_NAME == "cifar100":
-        if fds is None:
-            if NON_IID:
-                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-                # prevent empty or degenerate client datasets that could cause unstable
-                # training dynamics or inconsistent metric aggregation. 
-                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
-                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
-                # heterogeneity and ensuring each client has enough samples for stable
-                # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="fine_label", min_partition_size=1500,
-                                                self_balancing=True,
-                                                seed=SEED,
-                                                shuffle=True)
-            else:
-                partitioner = IidPartitioner(num_partitions=num_partitions)
-            fds = FederatedDataset(
-                dataset=DATASET,
-                partitioners={"train": partitioner},
-            )
-            
-        train_set = fds.load_partition(partition_id, "train")
-        train_set.set_format("numpy")
-
-        # Shuffle train set
-        train_set = train_set.shuffle(seed=SEED)
-
-        test_set = fds.load_split(split="test")
-        test_set.set_format("numpy")
-        # Shuffle test set
         test_set = test_set.shuffle(seed=SEED)
-        print("-" * 80)
-        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-        print("Number of images Original Dataset TEST:", test_set.shape[0])
-
-        # >>> TVD START
-        y_local_raw = np.asarray(train_set["fine_label"], dtype=np.int32)
-        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
-        # >>> TVD END
-
-        # X_train = np.concatenate((train_set["img"], train_set["img"], train_set["img"]), axis=0)
-        # y_train = np.concatenate((train_set['fine_label'], train_set['fine_label'], train_set['fine_label']), axis=0)
-        
-        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
-
-        # NEW DATA SPLIT 
-
-        X = np.asarray(train_set["img"])
-        y = np.asarray(train_set["fine_label"])
-
-        # Count samples per class
-        classes, counts = np.unique(y, return_counts=True)
-
-        print(f"Client {partition_id} class distribution:")
-        print(dict(zip(classes.tolist(), counts.tolist())))
-
-        # Identify classes that contain only one sample
-        rare_classes = classes[counts < 2]
-
-        # Keep rare-class samples exclusively in training
-        rare_mask = np.isin(y, rare_classes)
-
-        X_rare = X[rare_mask]
-        y_rare = y[rare_mask]
-
-        # Samples eligible for stratified splitting
-        X_common = X[~rare_mask]
-        y_common = y[~rare_mask]
-
-        # Stratified split of classes having at least two samples
-        common_classes = np.unique(y_common)
-        n_valid = int(np.ceil(0.2 * len(y_common)))
-        n_train = len(y_common) - n_valid
-
-        if (
-            len(common_classes) > 0
-            and n_valid >= len(common_classes)
-            and n_train >= len(common_classes)
-        ):
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X_common,
-                y_common,
-                test_size=0.2,
-                random_state=42,
-                stratify=y_common
-            )
-        else:
-            # Fallback if stratification is impossible
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X,
-                y,
-                test_size=0.2,
-                random_state=42,
-                stratify=None
-            )
-            X_rare = X[:0]
-            y_rare = y[:0]
-
-        # Add rare-class samples to training
-        if len(y_rare) > 0:
-            X_train = np.concatenate((X_train, X_rare), axis=0)
-            y_train = np.concatenate((y_train, y_rare), axis=0)
-
-        # Duplicate after splitting
-        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
-        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
-
-        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-        
-        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
-
-        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
-
-        images["train"] = np.float32((images["train"] - mean) / std)
-        images["valid"] = np.float32((images["valid"] - mean) / std)
-        
-        # print(test_set["img"])
-        
-        images["test"] = np.float32(test_set["img"]) / 255.0
-        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["fine_label"])
-
-    elif DATASET_NAME == "mnist":
-        if fds is None:
-            if NON_IID:
-                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-                # prevent empty or degenerate client datasets that could cause unstable
-                # training dynamics or inconsistent metric aggregation. 
-                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
-                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
-                # heterogeneity and ensuring each client has enough samples for stable
-                # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="label", min_partition_size=1500,
-                                                self_balancing=True,
-                                                seed=SEED,
-                                                shuffle=True)
-            else:
-                partitioner = IidPartitioner(num_partitions=num_partitions)
-            fds = FederatedDataset(
-                dataset=DATASET,
-                partitioners={"train": partitioner},
-            )
-            
-        train_set = fds.load_partition(partition_id, "train")
-        train_set.set_format("numpy")
-
-        # Shuffle train set
-        train_set = train_set.shuffle(seed=SEED)
-
-        test_set = fds.load_split(split="test")
         test_set.set_format("numpy")
-        # Shuffle test set
-        test_set = test_set.shuffle(seed=SEED)
-        print("-" * 80)
-        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
-        print("Number of images Original Dataset TEST:", test_set.shape[0])
 
-        # >>> TVD START
-        y_local_raw = np.asarray(train_set["label"], dtype=np.int32)
-        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
-        # >>> TVD END
+        print(
+            "Number of images Original Dataset TEST:",
+            len(test_set),
+        )
 
-        # X_train = np.concatenate((train_set["image"], train_set["image"], train_set["image"]), axis=0)
-        # X_train = _to_32x32x3(X_train)
-        # y_train = np.concatenate((train_set['label'], train_set['label'], train_set['label']), axis=0)
-        
-        # X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+        X_test = np.asarray(
+            test_set[image_col]
+        )
 
-        # NEW DATA SPLIT 
+        y_test = np.asarray(
+            test_set[label_col],
+            dtype=np.int32,
+        )
 
-        X = np.asarray(train_set["image"])
-        y = np.asarray(train_set["label"])
+        if config["grayscale"]:
+            X_test = _to_32x32x3(X_test)
 
-        # Count samples per class
-        classes, counts = np.unique(y, return_counts=True)
+    # --------------------------------------------------
+    # Duplicate training data
+    # --------------------------------------------------
 
-        print(f"Client {partition_id} class distribution:")
-        print(dict(zip(classes.tolist(), counts.tolist())))
+    # Preserve the original behavior:
+    # CIFAR-10, CIFAR-100 and MNIST use 3 copies.
+    # FEMNIST does not duplicate training samples.
 
-        # Identify classes that contain only one sample
-        rare_classes = classes[counts < 2]
+    if DATASET_NAME != "femnist":
 
-        # Keep rare-class samples exclusively in training
-        rare_mask = np.isin(y, rare_classes)
+        X_train = np.concatenate(
+            [X_train, X_train, X_train],
+            axis=0,
+        )
 
-        X_rare = X[rare_mask]
-        y_rare = y[rare_mask]
+        y_train = np.concatenate(
+            [y_train, y_train, y_train],
+            axis=0,
+        )
 
-        # Samples eligible for stratified splitting
-        X_common = X[~rare_mask]
-        y_common = y[~rare_mask]
+    # --------------------------------------------------
+    # Convert to float32 and scale to [0, 1]
+    # --------------------------------------------------
 
-        # Stratified split of classes having at least two samples
-        common_classes = np.unique(y_common)
-        n_valid = int(np.ceil(0.2 * len(y_common)))
-        n_train = len(y_common) - n_valid
+    images["train"] = (
+        X_train.astype(np.float32) / 255.0
+    )
 
-        if (
-            len(common_classes) > 0
-            and n_valid >= len(common_classes)
-            and n_train >= len(common_classes)
-        ):
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X_common,
-                y_common,
-                test_size=0.2,
-                random_state=42,
-                stratify=y_common
-            )
-        else:
-            # Fallback if stratification is impossible
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X,
-                y,
-                test_size=0.2,
-                random_state=42,
-                stratify=None
-            )
-            X_rare = X[:0]
-            y_rare = y[:0]
+    images["valid"] = (
+        X_valid.astype(np.float32) / 255.0
+    )
 
-        # Add rare-class samples to training
-        if len(y_rare) > 0:
-            X_train = np.concatenate((X_train, X_rare), axis=0)
-            y_train = np.concatenate((y_train, y_rare), axis=0)
+    images["test"] = (
+        X_test.astype(np.float32) / 255.0
+    )
 
-        # Duplicate after splitting
-        X_train = np.concatenate((X_train, X_train, X_train), axis=0)
-        y_train = np.concatenate((y_train, y_train, y_train), axis=0)
+    labels["train"] = y_train.astype(np.int32)
+    labels["valid"] = y_valid.astype(np.int32)
+    labels["test"] = y_test.astype(np.int32)
 
-        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-        
-        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+    # --------------------------------------------------
+    # Compute local mean and standard deviation
+    # --------------------------------------------------
 
-        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+    mean = np.mean(
+        images["train"],
+        axis=(0, 1, 2),
+        keepdims=True,
+    )
 
-        images["train"] = np.float32((images["train"] - mean) / std)
-        images["valid"] = np.float32((images["valid"] - mean) / std)
-        
-        # print(test_set["img"])
-        
-        images["test"] = np.float32(_to_32x32x3(test_set["image"])) / 255.0
-        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(test_set["label"])
+    std = np.std(
+        images["train"],
+        axis=(0, 1, 2),
+        keepdims=True,
+    )
 
-    elif DATASET_NAME == "femnist":
-        if fds is None:
-            if NON_IID:
-                # Use Dirichlet-based Non-IID partitioning with a minimum partition size to
-                # prevent empty or degenerate client datasets that could cause unstable
-                # training dynamics or inconsistent metric aggregation. 
-                # min_partition_size=6500 is chosen to guarantee feasible Dirichlet splits
-                # across 6 clients for CIFAR-10, while still preserving strong Non-IID
-                # heterogeneity and ensuring each client has enough samples for stable
-                # training and evaluation.
-                partitioner = DirichletPartitioner(num_partitions=num_partitions, alpha=ALPHA, partition_by="character", min_partition_size=1500,
-                                                self_balancing=True,
-                                                seed=SEED,
-                                                shuffle=True)
-            else:
-                partitioner = IidPartitioner(num_partitions=num_partitions)
-            fds = FederatedDataset(
-                dataset=DATASET,
-                partitioners={"train": partitioner},
-            )
-            
-        train_set = fds.load_partition(partition_id, "train")
-        train_set.set_format("numpy")
+    # Avoid division by zero
+    std = np.maximum(std, 1e-6)
 
-        # Shuffle train set
-        train_set = train_set.shuffle(seed=SEED)
+    # --------------------------------------------------
+    # Normalize using local training statistics
+    # --------------------------------------------------
 
-        print("-" * 80)
-        print("Number of images Original Dataset TRAIN:", train_set.shape[0])
+    for split in ["train", "valid", "test"]:
 
-        # >>> TVD START
-        y_local_raw = np.asarray(train_set["character"], dtype=np.int32)
-        dis_i, tv_i, p_local, p_global = compute_client_dis(y_local_raw)
-        # >>> TVD END
+        images[split] = (
+            (images[split] - mean) / std
+        ).astype(np.float32)
 
-        X_train = np.array(train_set["image"])
-        X_train = _to_32x32x3(X_train)
-        y_train = np.array(train_set['character'])
-        
-        X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.3, random_state=42, stratify=y_train)
+    # --------------------------------------------------
+    # Print dataset sizes
+    # --------------------------------------------------
 
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=1/7, random_state=42, stratify=y_train)
+    print("-" * 80)
 
-        images["train"], labels["train"] = np.float32(X_train) / 255.0, np.int32(y_train)
-        images["valid"], labels["valid"] = np.float32(X_valid) / 255.0, np.int32(y_valid)
-        
-        mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
-        std = np.std(images["train"], axis=(0, 1, 2), keepdims=True)
+    print(
+        "Number of images in dataset (Train):",
+        images["train"].shape[0],
+    )
 
-        # print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
-        # print("std: {}".format(np.reshape(std * 255.0, [-1])))
+    print(
+        "Number of images in dataset (Valid):",
+        images["valid"].shape[0],
+    )
 
-        images["train"] = np.float32((images["train"] - mean) / std)
-        images["valid"] = np.float32((images["valid"] - mean) / std)
-        
-        # print(test_set["img"])
-        
-        images["test"] = X_test / 255.0
-        images["test"], labels["test"] = np.float32((images["test"] - mean) / std), np.int32(y_test)
+    print(
+        "Number of images in dataset (Test):",
+        images["test"].shape[0],
+    )
 
-    print("Number of images in dataset (Train):", images["train"].shape[0])
-    print("Number of images in dataset (Valid):", images["valid"].shape[0])
-    print("Number of images in dataset (Test):", images["test"].shape[0])
-    
+    # --------------------------------------------------
+    # Print and save label distributions
+    # --------------------------------------------------
+
     rows = []
 
     print("-" * 80)
     print("Label distribution:")
 
+    exp_id = api.get_exp_id()
+
     for split in ["train", "valid", "test"]:
+
         label_counts = Counter(labels[split])
-        print(f"{split.upper()} set class distribution:")
+
+        print(
+            f"{split.upper()} set class distribution:"
+        )
+
         for label in sorted(label_counts):
+
             count = label_counts[label]
-            print(f"  Class {label}: {count} samples")
+
+            print(
+                f"  Class {label}: {count} samples"
+            )
+
             rows.append({
-                "exp_id": api.get_exp_id(),
+                "exp_id": exp_id,
                 "partition_id": partition_id,
                 "dataset_name": DATASET_NAME,
                 "split": split,
                 "class": int(label),
                 "count": int(count),
             })
+
         print("-" * 40)
 
     print("-" * 80)
 
+    # --------------------------------------------------
+    # Save Parquet
+    # --------------------------------------------------
+
     df = pd.DataFrame(rows)
 
+    output_dir = Path(
+        api.get_label_distributions_dir()
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     df.to_parquet(
-        api.get_label_distributions_dir() / f"client_{partition_id}.parquet",
+        output_dir / f"client_{partition_id}.parquet",
         engine="pyarrow",
         index=False,
     )
 
-    # To manage this in the future: df.groupby(["exp_id", "dataset_name", "split", "class"])["count"].sum()
-    
-    return {"images": images, "labels": labels, "dis_i": dis_i}
+    # --------------------------------------------------
+    # Return
+    # --------------------------------------------------
+
+    return {
+        "images": images,
+        "labels": labels,
+        "dis_i": dis_i,
+    }
     
 
         

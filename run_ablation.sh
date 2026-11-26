@@ -35,11 +35,11 @@ DEFAULT_DATASET="uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/m
 DEFAULT_DATASET_NAME="cifar10"      # cifar10, cifar100, mnist, femnist
 DEFAULT_NUM_CLASSES=10              # 10, 100, 10, 62
 DEFAULT_AGG="custom"
-DEFAULT_MU=1.0
+DEFAULT_MU=0.0
 DEFAULT_ABLATION=true
 DEFAULT_BETA=0.0
-DEFAULT_Q_PARAM=0.0
-DEFAULT_TVD=1.0
+DEFAULT_Q_PARAM=0.1
+DEFAULT_TVD=1.0 # 1 to apply 0 to supress
 DEFAULT_CLIP=true
 DEFAULT_CLIP_VALUE=3
 DEFAULT_SEED=42
@@ -53,9 +53,9 @@ DEFAULT_FRACTION_EVALUATE=1.0
 # "descripcion|parametro=valor|parametro=valor"
 EXPERIMENTS=(
   # Q ablation
-  "q_ablation|q_param=0.0|agg_method="qfedavg""
-  "q_ablation|q_param=0.25|agg_method="qfedavg""
-  "q_ablation|q_param=0.5|agg_method="qfedavg""
+  "q_ablation|alpha=0.5|q_param=0.1|agg_method=qfedavg"
+  "q_ablation|alpha=0.5|q_param=1.0|agg_method=qfedavg"
+  "q_ablation|alpha=0.5|q_param=5.0|agg_method=qfedavg"
 
   # Multiple parameter ablation
   # "beta_q_combined|beta=0.5|q_param=0.25"
@@ -249,7 +249,7 @@ for ((i=0; i<NUM_EXPS; i++)); do
 
   echo "✅ Ablation $((i+1)) finished"
 
-  rm -rf "$EXP_DIR/controller_weights" 2>/dev/null || true
+  rm -rf "$EXP_DIR/controller_weights" || true
 
   sleep 2
 done

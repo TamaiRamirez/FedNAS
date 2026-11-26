@@ -36,9 +36,9 @@ DEFAULT_DATASET="uoft-cs/cifar10"  # uoft-cs/cifar10, uoft-cs/cifar100, ylecun/m
 DEFAULT_DATASET_NAME="cifar10"      # cifar10, cifar100, mnist, femnist
 DEFAULT_NUM_CLASSES=10              # 10, 100, 10, 62
 DEFAULT_AGG="custom"
-DEFAULT_MU=1.0
+DEFAULT_MU=0.0
 DEFAULT_ABLATION=false
-DEFAULT_BETA=0.0
+DEFAULT_BETA=0.5
 DEFAULT_Q_PARAM=0.0
 DEFAULT_TVD=1.0
 DEFAULT_CLIP=true
@@ -54,8 +54,10 @@ DEFAULT_FRACTION_EVALUATE=1.0
 
 # "mode|parametro=valor|parametro=valor"
 EXPERIMENTS=(
-  # Q ablation
-  "local-deployment|q_param=0.0"
+  "local-deployment|alpha=0.1|mu=1.0"
+  "local-deployment|alpha=0.5|mu=0.1"
+  "simulation|alpha=0.5|mu=0.1|num-nodes=20"
+  "simulation|alpha=0.5|mu=0.1|num-nodes=20|fraction_fit=0.5"
 )
 
 NUM_EXPS=${#EXPERIMENTS[@]}
@@ -245,7 +247,7 @@ for ((i=0; i<NUM_EXPS; i++)); do
     simulation)
       FLWR_CMD=(
         flwr run "$BASE_DIR"
-        --federation-config="num-supernodes=${NUM_NODES} client-resources-num-cpus=10 client-resources-num-gpus=0.1"
+        --federation-config="num-supernodes=${NUM_NODES} client-resources-num-cpus=10 client-resources-num-gpus=0.2"
         --stream
       )
       ;;
@@ -270,7 +272,7 @@ for ((i=0; i<NUM_EXPS; i++)); do
   python3 "$BASE_DIR"/manual_early_stopping.py
 
   # Cleanup controller weights
-  rm -rf "$EXP_DIR/controller_weights" 2>/dev/null || true
+  rm -rf "$EXP_DIR/controller_weights" || true
 
   echo "✅ Experiment $((i+1)) finished"
   
